@@ -267,3 +267,17 @@
   border-color: rgb(239, 134, 97);
   box-shadow: inset 0 0 0 2px rgb(239, 134, 97);
 }
+
+/* ── Disabled Add Button ──────────────────────────────────── */
+
+.todo-add-btn-disabled {
+  background-color: #383838;
+  color: #888888;
+  border-color: transparent;
+}
+
+/* Prevent hover styling when disabled */
+.todo-add-btn-disabled:hover,
+.todo-add-btn-disabled:active {
+  background-color: #383838;
+}

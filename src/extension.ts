@@ -325,30 +325,41 @@ const LightTodoIndicator = GObject.registerClass(
       const entryItem = new PopupMenu.PopupBaseMenuItem({ activate: false });
       this._entry = new St.Entry({ style_class: "todo-entry", hint_text: "Add a todo…", x_expand: true, can_focus: true });
 
-      // Dynamic validation listener for background and borders
+      // CREATE BUTTON FIRST so it can be updated inside the listener
+      const addBtn = new St.Button({ style_class: "todo-add-btn todo-add-btn-disabled", label: "+" });
+      addBtn.reactive = false; // Disabled by default because input starts empty
+      addBtn.connect("clicked", () => this._addTodo(this._entry.get_text().trim()));
+
+      // Dynamic validation listener
       this._entry.clutter_text.connect("text-changed", () => {
         const text = this._entry.get_text().trim();
         const todos = this._getTodos();
 
-        // Reset state on every keystroke
+        // Reset valid/invalid entry state on every keystroke
         this._entry.remove_style_class_name("todo-entry-valid");
         this._entry.remove_style_class_name("todo-entry-invalid");
 
         if (text.length === 0) {
-          return; // Neutral Adwaita styling when empty
+          // Empty state: disable button
+          addBtn.reactive = false;
+          addBtn.add_style_class_name("todo-add-btn-disabled");
+          return;
         }
 
         if (todos.includes(text)) {
-          this._entry.add_style_class_name("todo-entry-invalid"); // Red background/border
+          // Invalid state (duplicate): red input, disable button
+          this._entry.add_style_class_name("todo-entry-invalid");
+          addBtn.reactive = false;
+          addBtn.add_style_class_name("todo-add-btn-disabled");
         } else {
-          this._entry.add_style_class_name("todo-entry-valid"); // Green background/border
+          // Valid state: green input, enable button
+          this._entry.add_style_class_name("todo-entry-valid");
+          addBtn.reactive = true;
+          addBtn.remove_style_class_name("todo-add-btn-disabled");
         }
       });
 
       this._entry.clutter_text.connect("activate", () => this._addTodo(this._entry.get_text().trim()));
-
-      const addBtn = new St.Button({ style_class: "todo-add-btn", label: "+" });
-      addBtn.connect("clicked", () => this._addTodo(this._entry.get_text().trim()));
 
       const entryBox = new St.BoxLayout({ x_expand: true });
       entryBox.add_child(this._entry);

@@ -90,11 +90,15 @@ const TodoItem = GObject.registerClass(
         style_class: "todo-edit-icon"
       }));
 
+      setupTooltip(editBtn, "Edit this Todo");
+
       const deleteBtn = new St.Button({
         style_class: "todo-delete-btn",
         label: "×",
         x_align: Clutter.ActorAlign.END,
       });
+
+      setupTooltip(deleteBtn, "Delete this Todo");
 
       const pinBtn = new St.Button({
         style_class: pinned ? "todo-pin-btn todo-pinned" : "todo-pin-btn",
@@ -104,6 +108,7 @@ const TodoItem = GObject.registerClass(
         icon_name: pinned ? "starred-symbolic" : "non-starred-symbolic",
         style_class: "todo-pin-icon"
       }));
+      setupTooltip(pinBtn, "Pin this Todo to the top");
 
       box.add_child(dragBtn);
       box.add_child(checkBtn);
@@ -479,35 +484,51 @@ const LightTodoIndicator = GObject.registerClass(
 
       // CREATE BUTTON FIRST so it can be updated inside the listener
       const addBtn = new St.Button({ style_class: "todo-add-btn todo-add-btn-disabled", label: "+" });
-      addBtn.reactive = false; // Disabled by default because input starts empty
-      addBtn.connect("clicked", () => this._addTodo(this._entry.get_text().trim()));
+
+      // FIX: Do NOT set reactive = false, otherwise hover tooltips stop working!
+      // We will control clickability with a boolean flag instead.
+      let canAdd = false;
+      let addTooltipText = "Type a todo...";
+
+      addBtn.connect("clicked", () => {
+        // Only trigger the add action if the input is valid
+        if (canAdd) {
+          this._addTodo(this._entry.get_text().trim());
+        }
+      });
+
+      // Attach dynamic tooltip using an arrow function getter
+      setupTooltip(addBtn, () => addTooltipText);
 
       // Dynamic validation listener
       this._entry.clutter_text.connect("text-changed", () => {
         const text = this._entry.get_text().trim();
         const todos = this._getTodos();
 
-        // Reset valid/invalid entry state on every keystroke
+        // Reset valid/invalid entry state
         this._entry.remove_style_class_name("todo-entry-valid");
         this._entry.remove_style_class_name("todo-entry-invalid");
 
         if (text.length === 0) {
-          // Empty state: disable button
-          addBtn.reactive = false;
+          // Empty state
+          canAdd = false;
           addBtn.add_style_class_name("todo-add-btn-disabled");
+          addTooltipText = "Type a todo...";
           return;
         }
 
         if (todos.includes(text)) {
-          // Invalid state (duplicate): red input, disable button
+          // Invalid state (duplicate)
+          canAdd = false;
           this._entry.add_style_class_name("todo-entry-invalid");
-          addBtn.reactive = false;
           addBtn.add_style_class_name("todo-add-btn-disabled");
+          addTooltipText = "Todo already exists!";
         } else {
-          // Valid state: green input, enable button
+          // Valid state
+          canAdd = true;
           this._entry.add_style_class_name("todo-entry-valid");
-          addBtn.reactive = true;
           addBtn.remove_style_class_name("todo-add-btn-disabled");
+          addTooltipText = "Add todo";
         }
       });
 
@@ -883,9 +904,9 @@ function log(message: string): void {
 
 /**
  * Attaches a floating tooltip to any St.Widget.
- * Injects the label into the global UI group to prevent clipping.
+ * Accepts a string, or a function that returns a string for dynamic text.
  */
-function setupTooltip(actor: St.Widget, text: string): void {
+function setupTooltip(actor: St.Widget, text: string | (() => string)): void {
   let tooltip: St.Label | null = null;
   let timeoutId: number | null = null;
 
@@ -902,41 +923,36 @@ function setupTooltip(actor: St.Widget, text: string): void {
 
   actor.connect("notify::hover", () => {
     if (actor.hover) {
-      // Wait 500ms before showing the tooltip
       timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
-        // Double check we are still hovering
         if (!actor.hover) return GLib.SOURCE_REMOVE;
 
+        // NEW: Resolve text dynamically
+        const tipText = typeof text === "function" ? text() : text;
+        if (!tipText) return GLib.SOURCE_REMOVE; // Safety check
+
         tooltip = new St.Label({
-          text: text,
+          text: tipText,
           style_class: "todo-tooltip",
         });
 
-        // Add to the absolute top-level screen layer
         Main.layoutManager.uiGroup.add_child(tooltip);
-
-        // Force Clutter to calculate the size of the new tooltip immediately
         tooltip.get_allocation_box();
 
-        // Get absolute screen coordinates of the button
         const [x, y] = actor.get_transformed_position();
         const [w, _h] = actor.get_transformed_size();
 
-        // Position perfectly centered ABOVE the button
         const tipX = x + (w / 2) - (tooltip.width / 2);
-        const tipY = y - tooltip.height - 6; // 6px padding above
+        const tipY = y - tooltip.height - 6;
 
         tooltip.set_position(tipX, tipY);
 
         return GLib.SOURCE_REMOVE;
       });
     } else {
-      // Mouse left the button
       destroyTooltip();
     }
   });
 
-  // CLEANUP: If the button is destroyed or hidden (menu closes), kill the tooltip
   actor.connect("destroy", destroyTooltip);
   actor.connect("hide", destroyTooltip);
 }

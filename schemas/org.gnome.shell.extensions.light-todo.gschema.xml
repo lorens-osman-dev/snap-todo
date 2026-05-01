@@ -39,5 +39,11 @@
       <description>Modifier key used with Up/Down arrows to move items (alt, ctrl, shift)</description>
     </key>
 
+    <key name="toggle-shortcut" type="as">
+      <default><![CDATA[['<Alt>t']]]></default>
+      <summary>Toggle Todo Panel</summary>
+      <description>Global shortcut to open or close the Light Todo panel menu</description>
+    </key>
+
   </schema>
 </schemalist>

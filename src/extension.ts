@@ -1,7 +1,8 @@
 /**
  * extension.ts — Light Todo GNOME Shell Extension
  */
-
+import Meta from "gi://Meta";
+import Shell from "gi://Shell";
 import GObject from "gi://GObject";
 import St from "gi://St";
 import Gio from "gi://Gio";
@@ -605,19 +606,40 @@ const LightTodoIndicator = GObject.registerClass(
   }
 );
 
+
 // ─── Extension Entry Point ───────────────────────────────────────────────────
 
 export default class LightTodoExtension extends Extension {
   private _indicator: InstanceType<typeof LightTodoIndicator> | null = null;
+  private _settings: Gio.Settings | null = null;
 
   override enable(): void {
-    this._indicator = new LightTodoIndicator(this.getSettings() as unknown as import("gi://Gio").default.Settings);
+    this._settings = this.getSettings() as unknown as Gio.Settings;
+    this._indicator = new LightTodoIndicator(this._settings);
     Main.panel.addToStatusArea(this.uuid, this._indicator);
+
+    // Register global Wayland-native shortcut
+    Main.wm.addKeybinding(
+      "toggle-shortcut",                    // The GSettings key name
+      this._settings,                       // The Gio.Settings object
+      Meta.KeyBindingFlags.NONE,            // Standard binding flag
+      Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW, // Active in desktop and overview modes
+      () => {
+        // Toggle the panel menu when the shortcut is pressed
+        if (this._indicator && this._indicator.menu) {
+          this._indicator.menu.toggle();
+        }
+      }
+    );
   }
 
   override disable(): void {
+    // CLEANUP: Always remove keybindings to prevent compositor input routing leaks
+    Main.wm.removeKeybinding("toggle-shortcut");
+
     this._indicator?.destroy();
     this._indicator = null;
+    this._settings = null;
   }
 }
 

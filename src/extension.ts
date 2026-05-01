@@ -57,6 +57,14 @@ const TodoItem = GObject.registerClass(
       (this as any)._delegate = this;
       DND.makeDraggable(dragBtn, {});
 
+      // NEW: Add dynamic tooltip to the drag button
+      setupTooltip(dragBtn, () => {
+        // Fetch the current modifier from settings and capitalize it (e.g., "alt" -> "Alt")
+        const mod = this._settings.get_string("drag-modifier");
+        const modName = mod.charAt(0).toUpperCase() + mod.slice(1);
+        return `Drag to reorder\n(${modName} + Up/Down)`;
+      });
+
       const checkBtn = new St.Button({
         style_class: completed ? "todo-check-btn todo-checked" : "todo-check-btn",
         x_align: Clutter.ActorAlign.START,
@@ -65,6 +73,8 @@ const TodoItem = GObject.registerClass(
         icon_name: completed ? 'checkbox-checked-symbolic' : 'checkbox-symbolic',
         style_class: 'todo-check-icon'
       }));
+
+      setupTooltip(checkBtn, "Mark this Todo as completed / press Space Key");
 
       this._label = new St.Label({
         text,

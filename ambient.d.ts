@@ -20,3 +20,15 @@ declare module "resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js" {
 declare module "resource:///org/gnome/shell/extensions/extension.js" {
   export * from "@girs/gnome-shell/extensions/extension";
 }
+
+// ambient.d.ts
+
+// ... existing resource declarations ...
+
+// Declare the global console API provided by GJS
+declare var console: {
+  debug(...data: any[]): void;
+  log(...data: any[]): void;
+  warn(...data: any[]): void;
+  error(...data: any[]): void;
+};

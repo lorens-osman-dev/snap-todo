@@ -121,12 +121,21 @@ const LightTodoIndicator = GObject.registerClass(
 
     private _addTodo(text: string): void {
       if (!text) return;
+
       const todos = this._getTodos();
-      if (todos.includes(text)) return;
+
+      if (todos.includes(text)) {
+        // Log duplicate attempts for debugging
+        log(`Attempted to add duplicate todo -> "${text}"`);
+        return;
+      }
+
+      // Log successful additions
+      log(`Successfully added todo -> "${text}"`);
+
       this._settings.set_strv("todos", [...todos, text]);
       this._entry.set_text("");
     }
-
     private _deleteTodo(text: string): void {
       this._settings.set_strv("todos", this._getTodos().filter(t => t !== text));
       this._settings.set_strv("completed", this._getCompleted().filter(t => t !== text));
@@ -184,4 +193,11 @@ export default class LightTodoExtension extends Extension {
     this._indicator?.destroy();
     this._indicator = null;
   }
+}
+
+/**
+ * A custom logger that automatically prepends the extension name.
+ */
+function log(message: string): void {
+  console.log(`LightTodo: ${message}`);
 }

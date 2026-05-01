@@ -30,11 +30,21 @@ const TodoItem = GObject.registerClass(
 
       const box = new St.BoxLayout({ style_class: "todo-item-box", x_expand: true });
 
+      // 1. Create the button container without a label
       const checkBtn = new St.Button({
         style_class: completed ? "todo-check-btn todo-checked" : "todo-check-btn",
-        label: completed ? "✓" : "○",
         x_align: Clutter.ActorAlign.START,
       });
+
+      // 2. Create the appropriate symbolic icon
+      const checkIcon = new St.Icon({
+        icon_name: completed ? 'checkbox-checked-symbolic' : 'checkbox-symbolic',
+        style_class: 'todo-check-icon',
+        // icon-size is best set in CSS for better integration
+      });
+
+      // 3. Add the icon as a child of the button
+      checkBtn.add_child(checkIcon);
 
       const label = new St.Label({
         text,

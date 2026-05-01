@@ -145,8 +145,8 @@ const TodoItem = GObject.registerClass(
         const state = event.get_state();
         const keyval = event.get_key_symbol();
 
-        // NEW: Handle Ctrl + Space -> Toggle completed state
-        if (keyval === Clutter.KEY_space && (state & Clutter.ModifierType.CONTROL_MASK) !== 0) {
+        //  Space -> Toggle completed state
+        if (keyval === Clutter.KEY_space) {
           this.emit("todo-toggle", this._text);
           return Clutter.EVENT_STOP;
         }

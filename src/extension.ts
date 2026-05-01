@@ -597,11 +597,51 @@ const LightTodoIndicator = GObject.registerClass(
     }
 
     private _toggleTodo(text: string): void {
+      const todos = this._getTodos();
       const completed = this._getCompleted();
-      if (completed.includes(text))
+      const pinned = this._getPinned();
+
+      const isCurrentlyCompleted = completed.includes(text);
+
+      // 1. Recreate the exact visual order of the list the item is currently in
+      let visualList = [...todos].sort((a, b) => {
+        const aPinned = pinned.includes(a);
+        const bPinned = pinned.includes(b);
+        if (aPinned && !bPinned) return -1;
+        if (!aPinned && bPinned) return 1;
+        return 0;
+      });
+
+      // Filter it down to either the active list or completed list
+      if (isCurrentlyCompleted) {
+        visualList = visualList.filter(t => completed.includes(t));
+      } else {
+        visualList = visualList.filter(t => !completed.includes(t));
+      }
+
+      // 2. Find the item that will "take its place"
+      const currentIndex = visualList.indexOf(text);
+      let nextFocusText: string | null = null;
+
+      if (currentIndex !== -1) {
+        if (currentIndex + 1 < visualList.length) {
+          // Focus the item immediately below it (which will shift up)
+          nextFocusText = visualList[currentIndex + 1];
+        } else if (currentIndex - 1 >= 0) {
+          // If it was the very last item, focus the one above it instead
+          nextFocusText = visualList[currentIndex - 1];
+        }
+      }
+
+      // Instruct _refresh() to focus this new item when it rebuilds the UI
+      this._textToFocus = nextFocusText;
+
+      // 3. Actually toggle the state in GSettings (this triggers _refresh)
+      if (isCurrentlyCompleted) {
         this._settings.set_strv("completed", completed.filter(t => t !== text));
-      else
+      } else {
         this._settings.set_strv("completed", [...completed, text]);
+      }
     }
 
     private _editTodo(oldText: string, newText: string): void {
@@ -782,10 +822,20 @@ const LightTodoIndicator = GObject.registerClass(
           }
           return GLib.SOURCE_REMOVE;
         }, null);
-
-        this._textToFocus = null;
-        this._keepHighlight = false;
+      } else if (this._textToFocus) {
+        // Fallback: If the item was hidden entirely (e.g. show-completed is off),
+        // fallback to focusing the input entry so the mouse doesn't hijack focus.
+        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+          if (this._entry && this._entry.is_mapped()) {
+            this._entry.grab_key_focus();
+          }
+          return GLib.SOURCE_REMOVE;
+        }, null);
       }
+
+      // Always clear out the trackers when we are done
+      this._textToFocus = null;
+      this._keepHighlight = false;
     }
 
     // NEW: Wayland-native Clipboard implementation

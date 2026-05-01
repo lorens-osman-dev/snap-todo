@@ -27,5 +27,11 @@
       <description>Where to place the indicator: left, center, right</description>
     </key>
 
+    <key name="pinned" type="as">
+      <default>[]</default>
+      <summary>Pinned todo items</summary>
+      <description>An array of pinned todo item strings</description>
+    </key>
+
   </schema>
 </schemalist>

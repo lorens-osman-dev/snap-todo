@@ -21,7 +21,8 @@ const TodoItem = GObject.registerClass(
       "todo-toggle": { param_types: [GObject.TYPE_STRING] },
       "todo-delete": { param_types: [GObject.TYPE_STRING] },
       "todo-edit": { param_types: [GObject.TYPE_STRING, GObject.TYPE_STRING] },
-      "todo-move": { param_types: [GObject.TYPE_STRING, GObject.TYPE_STRING] }, // NEW SIGNAL
+      "todo-move": { param_types: [GObject.TYPE_STRING, GObject.TYPE_STRING] },
+      "todo-pin": { param_types: [GObject.TYPE_STRING] },
     },
   },
   class TodoItem extends PopupMenu.PopupBaseMenuItem {
@@ -30,7 +31,7 @@ const TodoItem = GObject.registerClass(
     private _entry: St.Entry;
     private _isEditing: boolean = false;
 
-    constructor(text: string, completed: boolean = false) {
+    constructor(text: string, completed: boolean = false, pinned: boolean = false) {
       super({ activate: false });
       this._text = text;
 
@@ -95,11 +96,22 @@ const TodoItem = GObject.registerClass(
         label: "×",
         x_align: Clutter.ActorAlign.END,
       });
+
+      // Pin Button
+      const pinBtn = new St.Button({
+        style_class: pinned ? "todo-pin-btn todo-pinned" : "todo-pin-btn",
+        x_align: Clutter.ActorAlign.END,
+      });
+      pinBtn.add_child(new St.Icon({
+        icon_name: pinned ? "starred-symbolic" : "non-starred-symbolic",
+        style_class: "todo-pin-icon"
+      }));
       // Ensure the drag handle is the first item in the box
       box.add_child(dragBtn);
       box.add_child(checkBtn);
       box.add_child(this._label);
       box.add_child(this._entry);
+      box.add_child(pinBtn);
       box.add_child(editBtn);
       box.add_child(deleteBtn);
       this.add_child(box);
@@ -108,6 +120,7 @@ const TodoItem = GObject.registerClass(
       checkBtn.connect("clicked", () => this.emit("todo-toggle", this._text));
       deleteBtn.connect("clicked", () => this.emit("todo-delete", this._text));
       editBtn.connect("clicked", () => this._startEdit());
+      pinBtn.connect("clicked", () => this.emit("todo-pin", this._text));
 
       // Wayland-safe Input Handling for the Entry
       this._entry.clutter_text.connect("activate", () => this._finishEdit());
@@ -281,6 +294,7 @@ const LightTodoIndicator = GObject.registerClass(
     private _deleteTodo(text: string): void {
       this._settings.set_strv("todos", this._getTodos().filter(t => t !== text));
       this._settings.set_strv("completed", this._getCompleted().filter(t => t !== text));
+      this._settings.set_strv("pinned", this._getPinned().filter(t => t !== text)); // NEW
     }
 
     private _toggleTodo(text: string): void {
@@ -302,8 +316,11 @@ const LightTodoIndicator = GObject.registerClass(
       }
 
       // Update in todos array
-      const newTodos = todos.map(t => t === oldText ? newText : t);
-      this._settings.set_strv("todos", newTodos);
+      const pinned = this._getPinned();
+      if (pinned.includes(oldText)) {
+        const newPinned = pinned.map(t => t === oldText ? newText : t);
+        this._settings.set_strv("pinned", newPinned);
+      }
 
       // Update in completed array (if it was completed)
       const completed = this._getCompleted();
@@ -332,11 +349,22 @@ const LightTodoIndicator = GObject.registerClass(
       log(`Moved "${sourceText}" to index ${newTargetIndex}`);
       this._settings.set_strv("todos", todos);
     }
+    private _getPinned(): string[] { return this._settings.get_strv("pinned"); }
+
+    private _togglePin(text: string): void {
+      const pinned = this._getPinned();
+      if (pinned.includes(text)) {
+        this._settings.set_strv("pinned", pinned.filter(t => t !== text));
+      } else {
+        this._settings.set_strv("pinned", [...pinned, text]);
+      }
+    }
 
     private _refresh(): void {
       this._todoSection.removeAll();
       const todos = this._getTodos();
       const completed = this._getCompleted();
+      const pinned = this._getPinned();
       const showCompleted = this._settings.get_boolean("show-completed");
 
       this._panelLabel.set_text(String(todos.filter(t => !completed.includes(t)).length));
@@ -346,20 +374,31 @@ const LightTodoIndicator = GObject.registerClass(
         return;
       }
 
-      for (const text of todos) {
+      // NEW: Sort the todos array so pinned items come first
+      const sortedTodos = [...todos].sort((a, b) => {
+        const aPinned = pinned.includes(a);
+        const bPinned = pinned.includes(b);
+        if (aPinned && !bPinned) return -1; // a moves up
+        if (!aPinned && bPinned) return 1;  // b moves up
+        return 0; // keep original order
+      });
+
+      for (const text of sortedTodos) {
         const isDone = completed.includes(text);
         if (isDone && !showCompleted) continue;
-        const item = new TodoItem(text, isDone);
+
+        const isPinned = pinned.includes(text);
+        const item = new TodoItem(text, isDone, isPinned);
 
         item.connect("todo-toggle", (_i: unknown, t: string) => this._toggleTodo(t));
         item.connect("todo-delete", (_i: unknown, t: string) => this._deleteTodo(t));
         item.connect("todo-edit", (_i: unknown, oldT: string, newT: string) => this._editTodo(oldT, newT));
-        item.connect("todo-move", (_i: unknown, src: string, tgt: string) => this._moveTodo(src, tgt)); // NEW
+        item.connect("todo-move", (_i: unknown, src: string, tgt: string) => this._moveTodo(src, tgt));
+        item.connect("todo-pin", (_i: unknown, t: string) => this._togglePin(t)); // NEW
 
         this._todoSection.addMenuItem(item);
       }
     }
-
     override destroy(): void {
       if (this._settingsChangedId) { this._settings.disconnect(this._settingsChangedId); this._settingsChangedId = 0; }
       super.destroy();

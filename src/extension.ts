@@ -106,6 +106,7 @@ const TodoItem = GObject.registerClass(
         style_class: "todo-delete-btn",
         label: "×",
         x_align: Clutter.ActorAlign.END,
+        visible: !pinned,
       });
 
       setupTooltip(deleteBtn, "Delete this Todo");
@@ -612,12 +613,18 @@ const LightTodoIndicator = GObject.registerClass(
         return;
       }
 
+      // 1. Update the main 'todos' array (This was missing!)
+      const newTodos = todos.map(t => t === oldText ? newText : t);
+      this._settings.set_strv("todos", newTodos);
+
+      // 2. Update the 'pinned' array
       const pinned = this._getPinned();
       if (pinned.includes(oldText)) {
         const newPinned = pinned.map(t => t === oldText ? newText : t);
         this._settings.set_strv("pinned", newPinned);
       }
 
+      // 3. Update the 'completed' array
       const completed = this._getCompleted();
       if (completed.includes(oldText)) {
         const newCompleted = completed.map(t => t === oldText ? newText : t);

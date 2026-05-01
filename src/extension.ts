@@ -284,6 +284,7 @@ const LightTodoIndicator = GObject.registerClass(
     private _settingsChangedId: number = 0;
     private _todoSection!: PopupMenu.PopupMenuSection;
     private _completedSubMenu!: PopupMenu.PopupSubMenuMenuItem;
+    private _todoSeparator!: PopupMenu.PopupSeparatorMenuItem;
     private _entry!: St.Entry;
     private _panelLabel!: St.Label;
 
@@ -310,12 +311,13 @@ const LightTodoIndicator = GObject.registerClass(
     private _buildMenu(): void {
       const menu = this.menu as PopupMenu.PopupMenu;
 
-      menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem("Todos"));
+      // Keep a reference to the separator to update its label later
+      this._todoSeparator = new PopupMenu.PopupSeparatorMenuItem("Todos");
+      menu.addMenuItem(this._todoSeparator);
 
       this._todoSection = new PopupMenu.PopupMenuSection();
       menu.addMenuItem(this._todoSection);
 
-      // Initialize the collapsible completed section
       this._completedSubMenu = new PopupMenu.PopupSubMenuMenuItem("Completed");
       menu.addMenuItem(this._completedSubMenu);
 
@@ -467,7 +469,7 @@ const LightTodoIndicator = GObject.registerClass(
     }
 
     private _refresh(): void {
-      // CLEANUP: Destroy old actors in both sections to prevent memory leaks
+      // CLEANUP: Destroy old actors
       this._todoSection.removeAll();
       this._completedSubMenu.menu.removeAll();
 
@@ -476,11 +478,20 @@ const LightTodoIndicator = GObject.registerClass(
       const pinned = this._getPinned();
       const showCompleted = this._settings.get_boolean("show-completed");
 
+      // Calculate counts
       const activeTodos = todos.filter(t => !completed.includes(t));
-      this._panelLabel.set_text(String(activeTodos.length));
+      const activeCount = activeTodos.length;
+      const completedCount = todos.length - activeCount;
+
+      // Update Panel indicator
+      this._panelLabel.set_text(String(activeCount));
+
+      // Update Menu UI Labels dynamically
+      this._todoSeparator.label?.set_text(`Todos (${activeCount})`);
+      this._completedSubMenu.label.set_text(`Completed (${completedCount})`);
 
       // Handle empty state for active tasks
-      if (activeTodos.length === 0) {
+      if (activeCount === 0) {
         this._todoSection.addMenuItem(new PopupMenu.PopupMenuItem("No active todos yet  ✨", { reactive: false, style_class: "todo-empty-label" }));
       }
 
@@ -493,7 +504,6 @@ const LightTodoIndicator = GObject.registerClass(
       });
 
       let itemToFocus: InstanceType<typeof TodoItem> | null = null;
-      let completedCount = 0;
 
       for (const text of sortedTodos) {
         const isDone = completed.includes(text);
@@ -510,11 +520,8 @@ const LightTodoIndicator = GObject.registerClass(
         item.connect("todo-pin", (_i: unknown, t: string) => this._togglePin(t));
 
         if (isDone) {
-          // Route completed items into the collapsible submenu
           this._completedSubMenu.menu.addMenuItem(item);
-          completedCount++;
         } else {
-          // Route active items into the main view
           this._todoSection.addMenuItem(item);
         }
 
@@ -523,7 +530,7 @@ const LightTodoIndicator = GObject.registerClass(
         }
       }
 
-      // Automatically hide the collapsible section if it's empty or disabled in Adwaita preferences
+      // Automatically hide the collapsible section if it's empty or disabled
       this._completedSubMenu.visible = (showCompleted && completedCount > 0);
 
       // Restore focus and visual state

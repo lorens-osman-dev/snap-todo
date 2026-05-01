@@ -16,7 +16,7 @@
     </key>
 
     <key name="show-completed" type="b">
-      <default>false</default>
+      <default>true</default>
       <summary>Show completed items</summary>
       <description>Whether to show completed items in the panel menu</description>
     </key>

@@ -348,7 +348,7 @@ const LightTodoIndicator = GObject.registerClass(
       });
 
       this._buildPanel();
-      this._buildMenu();
+      this._buildMenu(extension);
       this._refresh();
 
       // NEW: Set initial visibility and listen for changes securely
@@ -397,7 +397,7 @@ const LightTodoIndicator = GObject.registerClass(
       }
     }
 
-    private _buildMenu(): void {
+    private _buildMenu(extension: Extension): void {
       const menu = this.menu as PopupMenu.PopupMenu;
 
       this._headerItem = new PopupMenu.PopupBaseMenuItem({ activate: false, hover: false });
@@ -434,9 +434,30 @@ const LightTodoIndicator = GObject.registerClass(
 
       copyAllBtn.connect("clicked", () => this._copyToClipboard(true));
 
+
+      // Button: Settings (Gear)
+      const settingsBtn = new St.Button({
+        style_class: "todo-header-btn",
+        y_align: Clutter.ActorAlign.CENTER,
+        can_focus: true,
+        accessible_name: "Open Preferences", // The accessible "title"
+      });
+
+      // 'emblem-system-symbolic' provides the classic GNOME gear icon
+      settingsBtn.add_child(new St.Icon({
+        icon_name: "emblem-system-symbolic",
+        style_class: "todo-header-icon"
+      }));
+
+      settingsBtn.connect("clicked", () => {
+        extension.openPreferences();
+        this.menu.close();
+      });
+
       this._headerItem.add_child(this._headerLabel);
       this._headerItem.add_child(copyActiveBtn);
       this._headerItem.add_child(copyAllBtn);
+      this._headerItem.add_child(settingsBtn);
       menu.addMenuItem(this._headerItem);
 
       this._todoSection = new PopupMenu.PopupMenuSection();

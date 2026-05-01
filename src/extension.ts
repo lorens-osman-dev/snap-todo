@@ -326,7 +326,8 @@ const LightTodoIndicator = GObject.registerClass(
     private _settingsChangedId: number = 0;
     private _todoSection!: PopupMenu.PopupMenuSection;
     private _completedSubMenu!: PopupMenu.PopupSubMenuMenuItem;
-    private _todoSeparator!: PopupMenu.PopupSeparatorMenuItem;
+    private _headerItem!: PopupMenu.PopupBaseMenuItem;
+    private _headerLabel!: St.Label;
     private _entry!: St.Entry;
     private _panelLabel!: St.Label;
 
@@ -399,8 +400,37 @@ const LightTodoIndicator = GObject.registerClass(
     private _buildMenu(): void {
       const menu = this.menu as PopupMenu.PopupMenu;
 
-      this._todoSeparator = new PopupMenu.PopupSeparatorMenuItem("Todos");
-      menu.addMenuItem(this._todoSeparator);
+      this._headerItem = new PopupMenu.PopupBaseMenuItem({ activate: false, hover: false });
+
+      this._headerLabel = new St.Label({
+        text: "Todos",
+        x_expand: true,
+        y_align: Clutter.ActorAlign.CENTER,
+        style: "font-weight: bold; color: #888888; font-size: 12px; margin-left: 6px;"
+      });
+
+      // Button: Copy Active
+      const copyActiveBtn = new St.Button({
+        style_class: "todo-header-btn",
+        y_align: Clutter.ActorAlign.CENTER,
+        can_focus: true,
+      });
+      copyActiveBtn.add_child(new St.Icon({ icon_name: "edit-copy-symbolic", style_class: "todo-header-icon" }));
+      copyActiveBtn.connect("clicked", () => this._copyToClipboard(false));
+
+      // Button: Copy All
+      const copyAllBtn = new St.Button({
+        style_class: "todo-header-btn",
+        y_align: Clutter.ActorAlign.CENTER,
+        can_focus: true,
+      });
+      copyAllBtn.add_child(new St.Icon({ icon_name: "accessories-clipboard-symbolic", style_class: "todo-header-icon" }));
+      copyAllBtn.connect("clicked", () => this._copyToClipboard(true));
+
+      this._headerItem.add_child(this._headerLabel);
+      this._headerItem.add_child(copyActiveBtn);
+      this._headerItem.add_child(copyAllBtn);
+      menu.addMenuItem(this._headerItem);
 
       this._todoSection = new PopupMenu.PopupMenuSection();
       menu.addMenuItem(this._todoSection);
@@ -621,7 +651,7 @@ const LightTodoIndicator = GObject.registerClass(
       this._panelLabel.set_text(String(activeCount));
 
       // Update Menu UI Labels dynamically
-      this._todoSeparator.label?.set_text(`Todos (${activeCount})`);
+      this._headerLabel.set_text(`Todos (${activeCount})`);
       this._completedSubMenu.label.set_text(`Completed (${completedCount})`);
 
       // Handle empty state for active tasks
@@ -684,6 +714,50 @@ const LightTodoIndicator = GObject.registerClass(
         this._textToFocus = null;
         this._keepHighlight = false;
       }
+    }
+
+    // NEW: Wayland-native Clipboard implementation
+    private _copyToClipboard(all: boolean): void {
+      const todos = this._getTodos();
+      const completed = this._getCompleted();
+
+      const activeTodos = todos.filter(t => !completed.includes(t));
+      const completedTodos = todos.filter(t => completed.includes(t));
+
+      let lines: string[] = [];
+
+      if (!all) {
+        // "Copy Active" clicked
+        if (activeTodos.length === 0) return;
+
+        lines.push("# Todos:");
+        activeTodos.forEach(t => lines.push(`- [ ] ${t}`));
+      } else {
+        // "Copy All" clicked
+        if (todos.length === 0) return;
+
+        if (activeTodos.length > 0) {
+          lines.push("# Todos:");
+          activeTodos.forEach(t => lines.push(`- [ ] ${t}`));
+        }
+
+        if (completedTodos.length > 0) {
+          lines.push("# Completed Todos:");
+          completedTodos.forEach(t => lines.push(`- [x] ${t}`));
+        }
+      }
+
+      const text = lines.join("\n");
+
+      // Send to Wayland clipboard
+      St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, text);
+
+      // Trigger native GNOME notification
+      const count = all ? todos.length : activeTodos.length;
+      Main.notify("Light Todo", `Copied ${count} item(s) to clipboard`);
+
+      // Close the menu so the user knows the action was completed
+      this.menu.close();
     }
 
     override destroy(): void {

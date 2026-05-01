@@ -290,3 +290,25 @@
   width: 0px !important;
   border: none !important;
 }
+
+/* ── Header Buttons ───────────────────────────────────────── */
+
+.todo-header-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  margin-left: 4px;
+  border-radius: 4px;
+  background-color: transparent;
+  color: #888888;
+  border: none;
+}
+
+.todo-header-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #cccccc;
+}
+
+.todo-header-icon {
+  icon-size: 14px;
+}

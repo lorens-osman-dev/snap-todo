@@ -283,6 +283,7 @@ const LightTodoIndicator = GObject.registerClass(
     private _settings: Gio.Settings;
     private _settingsChangedId: number = 0;
     private _todoSection!: PopupMenu.PopupMenuSection;
+    private _completedSubMenu!: PopupMenu.PopupSubMenuMenuItem;
     private _entry!: St.Entry;
     private _panelLabel!: St.Label;
 
@@ -310,8 +311,14 @@ const LightTodoIndicator = GObject.registerClass(
       const menu = this.menu as PopupMenu.PopupMenu;
 
       menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem("Todos"));
+
       this._todoSection = new PopupMenu.PopupMenuSection();
       menu.addMenuItem(this._todoSection);
+
+      // Initialize the collapsible completed section
+      this._completedSubMenu = new PopupMenu.PopupSubMenuMenuItem("Completed");
+      menu.addMenuItem(this._completedSubMenu);
+
       menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
       const entryItem = new PopupMenu.PopupBaseMenuItem({ activate: false });
@@ -460,17 +467,21 @@ const LightTodoIndicator = GObject.registerClass(
     }
 
     private _refresh(): void {
+      // CLEANUP: Destroy old actors in both sections to prevent memory leaks
       this._todoSection.removeAll();
+      this._completedSubMenu.menu.removeAll();
+
       const todos = this._getTodos();
       const completed = this._getCompleted();
       const pinned = this._getPinned();
       const showCompleted = this._settings.get_boolean("show-completed");
 
-      this._panelLabel.set_text(String(todos.filter(t => !completed.includes(t)).length));
+      const activeTodos = todos.filter(t => !completed.includes(t));
+      this._panelLabel.set_text(String(activeTodos.length));
 
-      if (todos.length === 0) {
-        this._todoSection.addMenuItem(new PopupMenu.PopupMenuItem("No todos yet  ✨", { reactive: false, style_class: "todo-empty-label" }));
-        return;
+      // Handle empty state for active tasks
+      if (activeTodos.length === 0) {
+        this._todoSection.addMenuItem(new PopupMenu.PopupMenuItem("No active todos yet  ✨", { reactive: false, style_class: "todo-empty-label" }));
       }
 
       const sortedTodos = [...todos].sort((a, b) => {
@@ -482,6 +493,7 @@ const LightTodoIndicator = GObject.registerClass(
       });
 
       let itemToFocus: InstanceType<typeof TodoItem> | null = null;
+      let completedCount = 0;
 
       for (const text of sortedTodos) {
         const isDone = completed.includes(text);
@@ -494,29 +506,33 @@ const LightTodoIndicator = GObject.registerClass(
         item.connect("todo-delete", (_i: unknown, t: string) => this._deleteTodo(t));
         item.connect("todo-edit", (_i: unknown, oldT: string, newT: string) => this._editTodo(oldT, newT));
         item.connect("todo-move", (_i: unknown, src: string, tgt: string) => this._moveTodo(src, tgt));
-
-        // Ensure we accept the 3rd boolean arg (keepHi) and pass it along
         item.connect("todo-move-step", (_i: unknown, src: string, dir: number, keepHi: boolean) => this._moveTodoStep(src, dir, keepHi));
         item.connect("todo-pin", (_i: unknown, t: string) => this._togglePin(t));
 
-        this._todoSection.addMenuItem(item);
+        if (isDone) {
+          // Route completed items into the collapsible submenu
+          this._completedSubMenu.menu.addMenuItem(item);
+          completedCount++;
+        } else {
+          // Route active items into the main view
+          this._todoSection.addMenuItem(item);
+        }
 
         if (text === this._textToFocus) {
           itemToFocus = item;
         }
       }
 
+      // Automatically hide the collapsible section if it's empty or disabled in Adwaita preferences
+      this._completedSubMenu.visible = (showCompleted && completedCount > 0);
+
       // Restore focus and visual state
       if (itemToFocus) {
-        // Lock the highlight variable locally to avoid state drift if async tasks interleave
         const highlight = this._keepHighlight;
-
         GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
           if (itemToFocus) {
             itemToFocus.active = true;
             itemToFocus.grab_key_focus();
-
-            // Reapply the style class immediately upon recreating the UI
             if (highlight) {
               itemToFocus.add_style_class_name("todo-item-modifier-held");
             }
@@ -524,7 +540,6 @@ const LightTodoIndicator = GObject.registerClass(
           return GLib.SOURCE_REMOVE;
         }, null);
 
-        // Reset state lock
         this._textToFocus = null;
         this._keepHighlight = false;
       }

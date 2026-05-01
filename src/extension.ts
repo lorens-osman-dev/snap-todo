@@ -356,8 +356,21 @@ const LightTodoIndicator = GObject.registerClass(
       }
 
       log(`Successfully added todo -> "${text}"`);
+
+      // Updating settings triggers _refresh(), which rebuilds the UI
       this._settings.set_strv("todos", [...todos, text]);
+
+      // Clear the text for the next item
       this._entry.set_text("");
+
+      // FIX: Yield to the main loop, wait for _refresh() to finish rebuilding 
+      // the Clutter actors, and then forcefully reclaim keyboard focus.
+      GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+        if (this._entry && this._entry.is_mapped()) {
+          this._entry.grab_key_focus();
+        }
+        return GLib.SOURCE_REMOVE;
+      }, null);
     }
 
     private _deleteTodo(text: string): void {

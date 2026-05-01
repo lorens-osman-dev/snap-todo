@@ -32,3 +32,7 @@ declare var console: {
   warn(...data: any[]): void;
   error(...data: any[]): void;
 };
+
+declare module "resource:///org/gnome/shell/ui/dnd.js" {
+  export * from "@girs/gnome-shell/ui/dnd";
+}

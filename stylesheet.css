@@ -171,3 +171,33 @@
   padding: 2px 4px;
   min-height: 20px;
 }
+
+/* ── Drag and Drop ────────────────────────────────────────── */
+
+.todo-drag-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background-color: transparent;
+  border: none;
+  color: #666666;
+  cursor: grab;
+}
+
+.todo-drag-btn:hover {
+  color: #aaaaaa;
+  cursor: pointer;
+}
+
+.todo-drag-icon {
+  icon-size: 14px;
+}
+
+/* The floating actor that follows the mouse pointer */
+.todo-drag-actor {
+  background-color: #2d2d2d;
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid #4a90d9;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}

@@ -11,6 +11,7 @@ import * as PanelMenu from "resource:///org/gnome/shell/ui/panelMenu.js";
 import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
+import * as DND from "resource:///org/gnome/shell/ui/dnd.js";
 
 // ─── Todo Item Widget ────────────────────────────────────────────────────────
 
@@ -20,6 +21,7 @@ const TodoItem = GObject.registerClass(
       "todo-toggle": { param_types: [GObject.TYPE_STRING] },
       "todo-delete": { param_types: [GObject.TYPE_STRING] },
       "todo-edit": { param_types: [GObject.TYPE_STRING, GObject.TYPE_STRING] },
+      "todo-move": { param_types: [GObject.TYPE_STRING, GObject.TYPE_STRING] }, // NEW SIGNAL
     },
   },
   class TodoItem extends PopupMenu.PopupBaseMenuItem {
@@ -33,6 +35,22 @@ const TodoItem = GObject.registerClass(
       this._text = text;
 
       const box = new St.BoxLayout({ style_class: "todo-item-box", x_expand: true });
+      // 1. Drag Handle
+      const dragBtn = new St.Button({
+        style_class: "todo-drag-btn",
+        x_align: Clutter.ActorAlign.START,
+        can_focus: false,
+      });
+      dragBtn.add_child(new St.Icon({
+        icon_name: "list-drag-handle-symbolic",
+        style_class: "todo-drag-icon"
+      }));
+
+      // Bind GNOME Shell DND to the handle, but make the row the delegate
+      (dragBtn as any)._delegate = this;
+      (this as any)._delegate = this;
+      DND.makeDraggable(dragBtn, {});
+
 
       // 1. Check Button
       const checkBtn = new St.Button({
@@ -77,7 +95,8 @@ const TodoItem = GObject.registerClass(
         label: "×",
         x_align: Clutter.ActorAlign.END,
       });
-
+      // Ensure the drag handle is the first item in the box
+      box.add_child(dragBtn);
       box.add_child(checkBtn);
       box.add_child(this._label);
       box.add_child(this._entry);
@@ -145,6 +164,40 @@ const TodoItem = GObject.registerClass(
       this._entry.hide();
       this._label.show();
       this._entry.set_text(this._text);
+    }
+
+    // ─── DND Delegate Methods ──────────────────────────────────────────────────
+
+    /** Returns the floating actor attached to the cursor */
+    getDragActor(): Clutter.Actor {
+      return new St.Label({
+        text: this._text,
+        style_class: "todo-label todo-drag-actor",
+      });
+    }
+
+    /** Tells the DND system who initiated the drag */
+    getDragActorSource(): Clutter.Actor {
+      return this;
+    }
+
+    /** Fired continuously when a dragged item hovers over this item */
+    handleDragOver(source: any, _actor: Clutter.Actor, _x: number, _y: number, _time: number): number {
+      // Use duck-typing to verify the source is a valid TodoItem
+      if (!source || typeof source.getText !== 'function' || source === this) {
+        return (DND as any).DragMotionResult ? (DND as any).DragMotionResult.NO_DROP : 0;
+      }
+      return (DND as any).DragMotionResult ? (DND as any).DragMotionResult.MOVE_DROP : 2;
+    }
+
+    /** Fired when the dragged item is released over this item */
+    acceptDrop(source: any, _actor: Clutter.Actor, _x: number, _y: number, _time: number): boolean {
+      if (!source || typeof source.getText !== 'function' || source === this) {
+        return false;
+      }
+      // Emit signal upward: "Move the source text to my position"
+      this.emit("todo-move", source.getText(), this._text);
+      return true;
     }
 
     getText(): string { return this._text; }
@@ -260,6 +313,26 @@ const LightTodoIndicator = GObject.registerClass(
       }
     }
 
+    private _moveTodo(sourceText: string, targetText: string): void {
+      const todos = this._getTodos();
+      const sourceIndex = todos.indexOf(sourceText);
+      const targetIndex = todos.indexOf(targetText);
+
+      if (sourceIndex === -1 || targetIndex === -1 || sourceIndex === targetIndex) return;
+
+      // Remove the item from its current array index
+      todos.splice(sourceIndex, 1);
+
+      // Re-find the target index (it shifts if the target was below the source)
+      const newTargetIndex = todos.indexOf(targetText);
+
+      // Insert the item just above the drop target
+      todos.splice(newTargetIndex, 0, sourceText);
+
+      log(`Moved "${sourceText}" to index ${newTargetIndex}`);
+      this._settings.set_strv("todos", todos);
+    }
+
     private _refresh(): void {
       this._todoSection.removeAll();
       const todos = this._getTodos();
@@ -278,10 +351,10 @@ const LightTodoIndicator = GObject.registerClass(
         if (isDone && !showCompleted) continue;
         const item = new TodoItem(text, isDone);
 
-        // Connect the 3 signals
         item.connect("todo-toggle", (_i: unknown, t: string) => this._toggleTodo(t));
         item.connect("todo-delete", (_i: unknown, t: string) => this._deleteTodo(t));
         item.connect("todo-edit", (_i: unknown, oldT: string, newT: string) => this._editTodo(oldT, newT));
+        item.connect("todo-move", (_i: unknown, src: string, tgt: string) => this._moveTodo(src, tgt)); // NEW
 
         this._todoSection.addMenuItem(item);
       }

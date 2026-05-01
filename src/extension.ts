@@ -124,10 +124,51 @@ const TodoItem = GObject.registerClass(
         if (this._isEditing) this._finishEdit();
       });
 
-      this._entry.clutter_text.connect("key-press-event", (_actor: unknown, event: Clutter.Event) => {
-        if (event.get_key_symbol() === Clutter.KEY_Escape) {
-          this._cancelEdit();
+      // ─── Keyboard Dragging & Shortcuts Events ───────────────────────────────
+
+      this.connect('key-press-event', (actor, event) => {
+        const state = event.get_state();
+        const keyval = event.get_key_symbol();
+
+        // NEW: Handle Ctrl + Space -> Toggle completed state
+        if (keyval === Clutter.KEY_space && (state & Clutter.ModifierType.CONTROL_MASK) !== 0) {
+          this.emit("todo-toggle", this._text);
           return Clutter.EVENT_STOP;
+        }
+
+        // NEW: Handle Delete -> Remove todo
+        if (keyval === Clutter.KEY_Delete) {
+          this.emit("todo-delete", this._text);
+          return Clutter.EVENT_STOP;
+        }
+
+        const modStr = this._settings.get_string("drag-modifier");
+
+        let mask = Clutter.ModifierType.MOD1_MASK;
+        let isModKey = (keyval === Clutter.KEY_Alt_L || keyval === Clutter.KEY_Alt_R);
+
+        if (modStr === "ctrl") {
+          mask = Clutter.ModifierType.CONTROL_MASK;
+          isModKey = (keyval === Clutter.KEY_Control_L || keyval === Clutter.KEY_Control_R);
+        } else if (modStr === "shift") {
+          mask = Clutter.ModifierType.SHIFT_MASK;
+          isModKey = (keyval === Clutter.KEY_Shift_L || keyval === Clutter.KEY_Shift_R);
+        }
+
+        const hasMod = (state & mask) !== 0 || isModKey;
+
+        if (hasMod) {
+          this.add_style_class_name("todo-item-modifier-held");
+        }
+
+        if ((state & mask) !== 0) {
+          if (keyval === Clutter.KEY_Up) {
+            this.emit("todo-move-step", this._text, -1, true);
+            return Clutter.EVENT_STOP;
+          } else if (keyval === Clutter.KEY_Down) {
+            this.emit("todo-move-step", this._text, 1, true);
+            return Clutter.EVENT_STOP;
+          }
         }
         return Clutter.EVENT_PROPAGATE;
       });

@@ -417,8 +417,10 @@ const LightTodoIndicator = GObject.registerClass(
       });
       copyActiveBtn.add_child(new St.Icon({ icon_name: "edit-copy-symbolic", style_class: "todo-header-icon" }));
       copyActiveBtn.connect("clicked", () => this._copyToClipboard(false));
+      // NEW: Attach tooltip
+      setupTooltip(copyActiveBtn, "Copy Uncompleted Todos");
 
-      // Button: Copy All
+
       // Button: Copy All
       const copyAllBtn = new St.Button({
         style_class: "todo-header-btn",
@@ -433,7 +435,8 @@ const LightTodoIndicator = GObject.registerClass(
       }));
 
       copyAllBtn.connect("clicked", () => this._copyToClipboard(true));
-
+      // NEW: Attach tooltip
+      setupTooltip(copyAllBtn, "Copy all Todos");
 
       // Button: Settings (Gear)
       const settingsBtn = new St.Button({
@@ -453,6 +456,9 @@ const LightTodoIndicator = GObject.registerClass(
         extension.openPreferences();
         this.menu.close();
       });
+
+      // NEW: Attach tooltip
+      setupTooltip(settingsBtn, "Settings");
 
       this._headerItem.add_child(this._headerLabel);
       this._headerItem.add_child(copyActiveBtn);
@@ -867,9 +873,70 @@ export default class LightTodoExtension extends Extension {
   }
 }
 
+
 /**
  * A custom logger that automatically prepends the extension name.
  */
 function log(message: string): void {
   console.log(`LightTodo: ${message}`);
+}
+
+/**
+ * Attaches a floating tooltip to any St.Widget.
+ * Injects the label into the global UI group to prevent clipping.
+ */
+function setupTooltip(actor: St.Widget, text: string): void {
+  let tooltip: St.Label | null = null;
+  let timeoutId: number | null = null;
+
+  const destroyTooltip = () => {
+    if (timeoutId) {
+      GLib.source_remove(timeoutId);
+      timeoutId = null;
+    }
+    if (tooltip) {
+      tooltip.destroy();
+      tooltip = null;
+    }
+  };
+
+  actor.connect("notify::hover", () => {
+    if (actor.hover) {
+      // Wait 500ms before showing the tooltip
+      timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+        // Double check we are still hovering
+        if (!actor.hover) return GLib.SOURCE_REMOVE;
+
+        tooltip = new St.Label({
+          text: text,
+          style_class: "todo-tooltip",
+        });
+
+        // Add to the absolute top-level screen layer
+        Main.layoutManager.uiGroup.add_child(tooltip);
+
+        // Force Clutter to calculate the size of the new tooltip immediately
+        tooltip.get_allocation_box();
+
+        // Get absolute screen coordinates of the button
+        const [x, y] = actor.get_transformed_position();
+        const [w, _h] = actor.get_transformed_size();
+
+        // Position perfectly centered ABOVE the button
+        const tipX = x + (w / 2) - (tooltip.width / 2);
+        const tipY = y - tooltip.height - 6; // 6px padding above
+
+        tooltip.set_position(tipX, tipY);
+
+        return GLib.SOURCE_REMOVE;
+      });
+    } else {
+      // Mouse left the button
+      destroyTooltip();
+    }
+  });
+
+  // CLEANUP: If the button is destroyed or hidden (menu closes), kill the tooltip
+  actor.connect("destroy", destroyTooltip);
+  actor.connect("hide", destroyTooltip);
 }

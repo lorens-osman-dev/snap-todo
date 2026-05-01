@@ -311,7 +311,6 @@ const LightTodoIndicator = GObject.registerClass(
     private _buildMenu(): void {
       const menu = this.menu as PopupMenu.PopupMenu;
 
-      // Keep a reference to the separator to update its label later
       this._todoSeparator = new PopupMenu.PopupSeparatorMenuItem("Todos");
       menu.addMenuItem(this._todoSeparator);
 
@@ -325,6 +324,27 @@ const LightTodoIndicator = GObject.registerClass(
 
       const entryItem = new PopupMenu.PopupBaseMenuItem({ activate: false });
       this._entry = new St.Entry({ style_class: "todo-entry", hint_text: "Add a todo…", x_expand: true, can_focus: true });
+
+      // Dynamic validation listener for background and borders
+      this._entry.clutter_text.connect("text-changed", () => {
+        const text = this._entry.get_text().trim();
+        const todos = this._getTodos();
+
+        // Reset state on every keystroke
+        this._entry.remove_style_class_name("todo-entry-valid");
+        this._entry.remove_style_class_name("todo-entry-invalid");
+
+        if (text.length === 0) {
+          return; // Neutral Adwaita styling when empty
+        }
+
+        if (todos.includes(text)) {
+          this._entry.add_style_class_name("todo-entry-invalid"); // Red background/border
+        } else {
+          this._entry.add_style_class_name("todo-entry-valid"); // Green background/border
+        }
+      });
+
       this._entry.clutter_text.connect("activate", () => this._addTodo(this._entry.get_text().trim()));
 
       const addBtn = new St.Button({ style_class: "todo-add-btn", label: "+" });
@@ -362,6 +382,8 @@ const LightTodoIndicator = GObject.registerClass(
 
       // Clear the text for the next item
       this._entry.set_text("");
+      this._entry.remove_style_class_name("todo-entry-valid");
+      this._entry.remove_style_class_name("todo-entry-invalid");
 
       // FIX: Yield to the main loop, wait for _refresh() to finish rebuilding 
       // the Clutter actors, and then forcefully reclaim keyboard focus.

@@ -419,12 +419,19 @@ const LightTodoIndicator = GObject.registerClass(
       copyActiveBtn.connect("clicked", () => this._copyToClipboard(false));
 
       // Button: Copy All
+      // Button: Copy All
       const copyAllBtn = new St.Button({
         style_class: "todo-header-btn",
         y_align: Clutter.ActorAlign.CENTER,
         can_focus: true,
       });
-      copyAllBtn.add_child(new St.Icon({ icon_name: "accessories-clipboard-symbolic", style_class: "todo-header-icon" }));
+
+      // Changed icon_name to 'edit-paste-symbolic' which is universally available
+      copyAllBtn.add_child(new St.Icon({
+        icon_name: "edit-paste-symbolic",
+        style_class: "todo-header-icon"
+      }));
+
       copyAllBtn.connect("clicked", () => this._copyToClipboard(true));
 
       this._headerItem.add_child(this._headerLabel);

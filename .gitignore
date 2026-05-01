@@ -1,0 +1,19 @@
+# ── Node Dependencies ──────────────────────────
+node_modules/
+
+# ── Build Outputs ──────────────────────────────
+# TypeScript compilation output
+dist/
+
+# Compiled GSettings schemas
+schemas/gschemas.compiled
+
+# Packaging artifacts
+#_pack/
+#*.zip
+
+# ── OS & Editor Files ──────────────────────────
+.DS_Store
+.vscode/
+.idea/
+*.swp

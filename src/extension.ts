@@ -333,13 +333,32 @@ const LightTodoIndicator = GObject.registerClass(
     private _textToFocus: string | null = null;
     private _keepHighlight: boolean = false; // NEW: Tracks highlight requirement across rebuilds
 
-    constructor(settings: Gio.Settings) {
+    constructor(settings: Gio.Settings, extension: Extension) {
       super(0.0, "Light Todo", false);
       this._settings = settings;
+
       this._buildPanel();
       this._buildMenu();
       this._refresh();
       this._settingsChangedId = this._settings.connect("changed", () => this._refresh());
+
+      // Intercept Clutter pointer events for right-click handling
+      this.connect('button-press-event', (actor, event) => {
+        // 3 represents the secondary mouse button (Right-click)
+        if (event.get_button() === 3) {
+          // Launch the isolated GTK4/Adwaita preferences process
+          extension.openPreferences();
+
+          // Ensure the popup menu stays closed
+          this.menu.close();
+
+          // Stop propagation to prevent the shell from toggling the menu
+          return Clutter.EVENT_STOP;
+        }
+
+        // Let standard left-clicks pass through to open the todo list
+        return Clutter.EVENT_PROPAGATE;
+      });
     }
 
     private _buildPanel(): void {
@@ -656,17 +675,18 @@ export default class LightTodoExtension extends Extension {
 
   override enable(): void {
     this._settings = this.getSettings() as unknown as Gio.Settings;
-    this._indicator = new LightTodoIndicator(this._settings);
+
+    // UPDATE: Pass `this` to the indicator constructor
+    this._indicator = new LightTodoIndicator(this._settings, this);
     Main.panel.addToStatusArea(this.uuid, this._indicator);
 
     // Register global Wayland-native shortcut
     Main.wm.addKeybinding(
-      "toggle-shortcut",                    // The GSettings key name
-      this._settings,                       // The Gio.Settings object
-      Meta.KeyBindingFlags.NONE,            // Standard binding flag
-      Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW, // Active in desktop and overview modes
+      "toggle-shortcut",
+      this._settings,
+      Meta.KeyBindingFlags.NONE,
+      Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
       () => {
-        // Toggle the panel menu when the shortcut is pressed
         if (this._indicator && this._indicator.menu) {
           this._indicator.menu.toggle();
         }

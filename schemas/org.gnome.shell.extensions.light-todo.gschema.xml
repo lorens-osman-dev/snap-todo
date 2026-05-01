@@ -45,5 +45,11 @@
       <description>Global shortcut to open or close the Light Todo panel menu</description>
     </key>
 
+    <key name="show-indicator" type="b">
+      <default>true</default>
+      <summary>Show in Panel</summary>
+      <description>Whether to show the extension indicator in the top panel</description>
+    </key>
+
   </schema>
 </schemalist>

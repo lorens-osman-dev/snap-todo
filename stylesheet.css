@@ -281,3 +281,12 @@
 .todo-add-btn-disabled:active {
   background-color: #383838;
 }
+
+/* ── Hidden Indicator State ───────────────────────────────── */
+
+.todo-indicator-hidden {
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 0px !important;
+  border: none !important;
+}

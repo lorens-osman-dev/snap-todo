@@ -29,6 +29,14 @@ export default class LightTodoPreferences extends ExtensionPreferences {
     });
     page.add(appearanceGroup);
 
+    // NEW: Toggle to show/hide the top bar indicator entirely
+    const showIndicatorRow = new Adw.SwitchRow({
+      title: "Show Panel Indicator",
+      subtitle: "Display the Light Todo button in the top bar",
+    });
+    settings.bind("show-indicator", showIndicatorRow, "active", Gio.SettingsBindFlags.DEFAULT);
+    appearanceGroup.add(showIndicatorRow);
+
     // Show completed toggle
     const showCompletedRow = new Adw.SwitchRow({
       title: "Show Completed Items",
@@ -76,7 +84,44 @@ export default class LightTodoPreferences extends ExtensionPreferences {
       const modifiers = ["alt", "ctrl", "shift"];
       settings.set_string("drag-modifier", modifiers[modifierRow.get_selected()] ?? "alt");
     });
+
+
     behaviorGroup.add(modifierRow);
+
+    // NEW: Dropdown to easily change the toggle shortcut modifier
+    const shortcutRow = new Adw.ComboRow({
+      title: "Toggle Shortcut",
+      subtitle: "Global keyboard shortcut to open the todo panel",
+    });
+
+    const shortcutModel = new Gtk.StringList();
+
+    // Define the safe options and their corresponding GNOME keybind strings
+    const shortcutOptions = [
+      { label: "Alt + T", value: "<Alt>t" },
+      { label: "Ctrl + T", value: "<Control>t" },
+      { label: "Shift + T", value: "<Shift>t" },
+      { label: "Super + T", value: "<Super>t" },
+    ];
+
+    shortcutOptions.forEach(opt => shortcutModel.append(opt.label));
+    shortcutRow.set_model(shortcutModel);
+
+    // Read current setting and match it to our dropdown list
+    const currentShortcut = settings.get_strv("toggle-shortcut")[0] ?? "<Alt>t";
+    const currentIndex = shortcutOptions.findIndex(opt => opt.value === currentShortcut);
+
+    // Fallback to 0 (Alt+T) if somehow an invalid string got in there
+    shortcutRow.set_selected(Math.max(0, currentIndex));
+
+    // Save the new shortcut back to GSettings when selected
+    shortcutRow.connect("notify::selected", () => {
+      const selectedValue = shortcutOptions[shortcutRow.get_selected()].value;
+      settings.set_strv("toggle-shortcut", [selectedValue]);
+    });
+
+    behaviorGroup.add(shortcutRow);
+
 
     // ── Group: Data ─────────────────────────────────────────────────────────
     const dataGroup = new Adw.PreferencesGroup({

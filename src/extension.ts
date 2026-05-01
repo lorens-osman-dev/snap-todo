@@ -330,6 +330,9 @@ const LightTodoIndicator = GObject.registerClass(
     private _entry!: St.Entry;
     private _panelLabel!: St.Label;
 
+    // NEW: Keep a reference to the inner box
+    private _panelBox!: St.BoxLayout;
+
     private _textToFocus: string | null = null;
     private _keepHighlight: boolean = false; // NEW: Tracks highlight requirement across rebuilds
 
@@ -337,9 +340,20 @@ const LightTodoIndicator = GObject.registerClass(
       super(0.0, "Light Todo", false);
       this._settings = settings;
 
+      // Set initial visibility and listen for changes
+      this.visible = this._settings.get_boolean("show-indicator");
+      this._settings.connect("changed::show-indicator", () => {
+        this.visible = this._settings.get_boolean("show-indicator");
+      });
+
       this._buildPanel();
       this._buildMenu();
       this._refresh();
+
+      // NEW: Set initial visibility and listen for changes securely
+      this._updateVisibility();
+      this._settings.connect("changed::show-indicator", () => this._updateVisibility());
+
       this._settingsChangedId = this._settings.connect("changed", () => this._refresh());
 
       // Intercept Clutter pointer events for right-click handling
@@ -362,11 +376,24 @@ const LightTodoIndicator = GObject.registerClass(
     }
 
     private _buildPanel(): void {
-      const box = new St.BoxLayout({ style_class: "todo-panel-box" });
-      box.add_child(new St.Icon({ icon_name: "checkbox-checked-symbolic", style_class: "todo-panel-icon" }));
+      // UPDATE: Assign the box to our class variable
+      this._panelBox = new St.BoxLayout({ style_class: "todo-panel-box" });
+      this._panelBox.add_child(new St.Icon({ icon_name: "checkbox-checked-symbolic", style_class: "todo-panel-icon" }));
       this._panelLabel = new St.Label({ text: "0", style_class: "todo-panel-count", y_align: Clutter.ActorAlign.CENTER });
-      box.add_child(this._panelLabel);
-      this.add_child(box);
+      this._panelBox.add_child(this._panelLabel);
+      this.add_child(this._panelBox);
+    }
+
+    // NEW: Safely collapses the indicator without destroying its anchor point
+    private _updateVisibility(): void {
+      const show = this._settings.get_boolean("show-indicator");
+      if (show) {
+        this.remove_style_class_name("todo-indicator-hidden");
+        this._panelBox.show();
+      } else {
+        this.add_style_class_name("todo-indicator-hidden");
+        this._panelBox.hide();
+      }
     }
 
     private _buildMenu(): void {
@@ -672,15 +699,20 @@ const LightTodoIndicator = GObject.registerClass(
 export default class LightTodoExtension extends Extension {
   private _indicator: InstanceType<typeof LightTodoIndicator> | null = null;
   private _settings: Gio.Settings | null = null;
+  private _positionChangedId: number = 0; // NEW: Track position setting changes
 
   override enable(): void {
     this._settings = this.getSettings() as unknown as Gio.Settings;
-
-    // UPDATE: Pass `this` to the indicator constructor
     this._indicator = new LightTodoIndicator(this._settings, this);
+
+    // Initial registration in the status area (makes it trackable)
     Main.panel.addToStatusArea(this.uuid, this._indicator);
 
-    // Register global Wayland-native shortcut
+    // NEW: Listen for position changes and apply immediately
+    this._positionChangedId = this._settings.connect("changed::panel-position", () => this._updatePosition());
+    this._updatePosition();
+
+    // Register global Wayland-native shortcut (automatically updates when you change the setting!)
     Main.wm.addKeybinding(
       "toggle-shortcut",
       this._settings,
@@ -694,10 +726,39 @@ export default class LightTodoExtension extends Extension {
     );
   }
 
-  override disable(): void {
-    // CLEANUP: Always remove keybindings to prevent compositor input routing leaks
-    Main.wm.removeKeybinding("toggle-shortcut");
+  // NEW: Safely moves the Clutter actor to the requested panel sector
+  private _updatePosition(): void {
+    if (!this._indicator || !this._settings) return;
 
+    const pos = this._settings.get_string("panel-position");
+
+    // Remove from the current panel section
+    const parent = this._indicator.get_parent();
+    if (parent) {
+      parent.remove_child(this._indicator);
+    }
+
+    // Bypass TypeScript's strictness for GNOME's internal panel boxes
+    const panel = Main.panel as any;
+
+    // Insert into the newly requested panel section
+    if (pos === "left") {
+      panel._leftBox.insert_child_at_index(this._indicator, panel._leftBox.get_n_children());
+    } else if (pos === "center") {
+      panel._centerBox.insert_child_at_index(this._indicator, panel._centerBox.get_n_children());
+    } else {
+      panel._rightBox.insert_child_at_index(this._indicator, 0);
+    }
+  }
+
+  override disable(): void {
+    // NEW: Always disconnect settings listeners to prevent memory leaks
+    if (this._settings && this._positionChangedId) {
+      this._settings.disconnect(this._positionChangedId);
+      this._positionChangedId = 0;
+    }
+
+    Main.wm.removeKeybinding("toggle-shortcut");
     this._indicator?.destroy();
     this._indicator = null;
     this._settings = null;

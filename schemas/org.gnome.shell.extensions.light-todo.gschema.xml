@@ -33,5 +33,11 @@
       <description>An array of pinned todo item strings</description>
     </key>
 
+    <key name="drag-modifier" type="s">
+      <default>'alt'</default>
+      <summary>Keyboard drag modifier</summary>
+      <description>Modifier key used with Up/Down arrows to move items (alt, ctrl, shift)</description>
+    </key>
+
   </schema>
 </schemalist>

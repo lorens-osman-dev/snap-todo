@@ -227,3 +227,12 @@
 .todo-pinned .todo-pin-icon {
   color: #f8e45c; 
 }
+
+/* ── Keyboard Modifier Held State ─────────────────────────── */
+
+.todo-item-modifier-held {
+  /* Light yellow background with transparency to play nice with dark/light themes */
+  background-color: rgba(255, 235, 59, 0.15) !important;
+  border-radius: 6px;
+  transition-duration: 100ms;
+}

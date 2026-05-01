@@ -22,6 +22,8 @@ const TodoItem = GObject.registerClass(
       "todo-delete": { param_types: [GObject.TYPE_STRING] },
       "todo-edit": { param_types: [GObject.TYPE_STRING, GObject.TYPE_STRING] },
       "todo-move": { param_types: [GObject.TYPE_STRING, GObject.TYPE_STRING] },
+      // NEW: Added a boolean parameter to track if the highlight should be kept after recreation
+      "todo-move-step": { param_types: [GObject.TYPE_STRING, GObject.TYPE_INT, GObject.TYPE_BOOLEAN] },
       "todo-pin": { param_types: [GObject.TYPE_STRING] },
     },
   },
@@ -30,13 +32,15 @@ const TodoItem = GObject.registerClass(
     private _label: St.Label;
     private _entry: St.Entry;
     private _isEditing: boolean = false;
+    private _settings: Gio.Settings;
 
-    constructor(text: string, completed: boolean = false, pinned: boolean = false) {
+    constructor(text: string, completed: boolean, pinned: boolean, settings: Gio.Settings) {
       super({ activate: false });
       this._text = text;
+      this._settings = settings;
 
       const box = new St.BoxLayout({ style_class: "todo-item-box", x_expand: true });
-      // 1. Drag Handle
+
       const dragBtn = new St.Button({
         style_class: "todo-drag-btn",
         x_align: Clutter.ActorAlign.START,
@@ -52,8 +56,6 @@ const TodoItem = GObject.registerClass(
       (this as any)._delegate = this;
       DND.makeDraggable(dragBtn, {});
 
-
-      // 1. Check Button
       const checkBtn = new St.Button({
         style_class: completed ? "todo-check-btn todo-checked" : "todo-check-btn",
         x_align: Clutter.ActorAlign.START,
@@ -63,7 +65,6 @@ const TodoItem = GObject.registerClass(
         style_class: 'todo-check-icon'
       }));
 
-      // 2. Main Label
       this._label = new St.Label({
         text,
         style_class: completed ? "todo-label todo-label-done" : "todo-label",
@@ -71,7 +72,6 @@ const TodoItem = GObject.registerClass(
         y_align: Clutter.ActorAlign.CENTER,
       });
 
-      // 3. Hidden Edit Entry
       this._entry = new St.Entry({
         style_class: "todo-edit-entry",
         text: this._text,
@@ -80,7 +80,6 @@ const TodoItem = GObject.registerClass(
         can_focus: true,
       });
 
-      // 4. Edit Button
       const editBtn = new St.Button({
         style_class: "todo-edit-btn",
         x_align: Clutter.ActorAlign.END,
@@ -90,14 +89,12 @@ const TodoItem = GObject.registerClass(
         style_class: "todo-edit-icon"
       }));
 
-      // 5. Delete Button
       const deleteBtn = new St.Button({
         style_class: "todo-delete-btn",
         label: "×",
         x_align: Clutter.ActorAlign.END,
       });
 
-      // Pin Button
       const pinBtn = new St.Button({
         style_class: pinned ? "todo-pin-btn todo-pinned" : "todo-pin-btn",
         x_align: Clutter.ActorAlign.END,
@@ -106,7 +103,7 @@ const TodoItem = GObject.registerClass(
         icon_name: pinned ? "starred-symbolic" : "non-starred-symbolic",
         style_class: "todo-pin-icon"
       }));
-      // Ensure the drag handle is the first item in the box
+
       box.add_child(dragBtn);
       box.add_child(checkBtn);
       box.add_child(this._label);
@@ -116,13 +113,11 @@ const TodoItem = GObject.registerClass(
       box.add_child(deleteBtn);
       this.add_child(box);
 
-      // Event Connections
       checkBtn.connect("clicked", () => this.emit("todo-toggle", this._text));
       deleteBtn.connect("clicked", () => this.emit("todo-delete", this._text));
       editBtn.connect("clicked", () => this._startEdit());
       pinBtn.connect("clicked", () => this.emit("todo-pin", this._text));
 
-      // Wayland-safe Input Handling for the Entry
       this._entry.clutter_text.connect("activate", () => this._finishEdit());
       this._entry.clutter_text.connect("key-focus-out", () => {
         if (this._isEditing) this._finishEdit();
@@ -131,9 +126,66 @@ const TodoItem = GObject.registerClass(
       this._entry.clutter_text.connect("key-press-event", (_actor: unknown, event: Clutter.Event) => {
         if (event.get_key_symbol() === Clutter.KEY_Escape) {
           this._cancelEdit();
-          return Clutter.EVENT_STOP; // Stop propagation so the popup menu doesn't close
+          return Clutter.EVENT_STOP;
         }
         return Clutter.EVENT_PROPAGATE;
+      });
+
+      // ─── Keyboard Dragging Events ───────────────────────────────────────────
+
+      this.connect('key-press-event', (actor, event) => {
+        const state = event.get_state();
+        const keyval = event.get_key_symbol();
+        const modStr = this._settings.get_string("drag-modifier");
+
+        let mask = Clutter.ModifierType.MOD1_MASK;
+        let isModKey = (keyval === Clutter.KEY_Alt_L || keyval === Clutter.KEY_Alt_R);
+
+        if (modStr === "ctrl") {
+          mask = Clutter.ModifierType.CONTROL_MASK;
+          isModKey = (keyval === Clutter.KEY_Control_L || keyval === Clutter.KEY_Control_R);
+        } else if (modStr === "shift") {
+          mask = Clutter.ModifierType.SHIFT_MASK;
+          isModKey = (keyval === Clutter.KEY_Shift_L || keyval === Clutter.KEY_Shift_R);
+        }
+
+        const hasMod = (state & mask) !== 0 || isModKey;
+
+        if (hasMod) {
+          this.add_style_class_name("todo-item-modifier-held");
+        }
+
+        if ((state & mask) !== 0) {
+          if (keyval === Clutter.KEY_Up) {
+            // Pass true to tell the indicator to preserve the highlight during rebuild
+            this.emit("todo-move-step", this._text, -1, true);
+            return Clutter.EVENT_STOP;
+          } else if (keyval === Clutter.KEY_Down) {
+            this.emit("todo-move-step", this._text, 1, true);
+            return Clutter.EVENT_STOP;
+          }
+        }
+        return Clutter.EVENT_PROPAGATE;
+      });
+
+      this.connect('key-release-event', (actor, event) => {
+        const keyval = event.get_key_symbol();
+        const modStr = this._settings.get_string("drag-modifier");
+
+        let isModKey = (keyval === Clutter.KEY_Alt_L || keyval === Clutter.KEY_Alt_R);
+        if (modStr === "ctrl") isModKey = (keyval === Clutter.KEY_Control_L || keyval === Clutter.KEY_Control_R);
+        else if (modStr === "shift") isModKey = (keyval === Clutter.KEY_Shift_L || keyval === Clutter.KEY_Shift_R);
+
+        if (isModKey) {
+          this.remove_style_class_name("todo-item-modifier-held");
+        }
+        return Clutter.EVENT_PROPAGATE;
+      });
+
+      this.connect('notify::active', () => {
+        if (!this.active) {
+          this.remove_style_class_name("todo-item-modifier-held");
+        }
       });
     }
 
@@ -145,7 +197,6 @@ const TodoItem = GObject.registerClass(
       this._entry.set_text(this._text);
       this._entry.show();
 
-      // Defer focus grab to the next idle frame to ensure the actor is fully mapped
       GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
         this._entry.grab_key_focus();
         return GLib.SOURCE_REMOVE;
@@ -166,7 +217,6 @@ const TodoItem = GObject.registerClass(
         this._label.set_text(newText);
         this.emit("todo-edit", oldText, newText);
       } else if (!newText) {
-        // Revert to old text visually if they try to save an empty string
         this._entry.set_text(this._text);
       }
     }
@@ -181,7 +231,21 @@ const TodoItem = GObject.registerClass(
 
     // ─── DND Delegate Methods ──────────────────────────────────────────────────
 
-    /** Returns the floating actor attached to the cursor */
+    // NEW: Trigger yellow highlight when mouse dragging starts
+    onDragBegin(): void {
+      this.add_style_class_name("todo-item-modifier-held");
+    }
+
+    // NEW: Remove highlight when dragging ends. Using try-catch because if a drop 
+    // was accepted, settings are saved and this old actor is destroyed.
+    onDragEnd(): void {
+      try { this.remove_style_class_name("todo-item-modifier-held"); } catch (e) { }
+    }
+
+    onDragCancelled(): void {
+      try { this.remove_style_class_name("todo-item-modifier-held"); } catch (e) { }
+    }
+
     getDragActor(): Clutter.Actor {
       return new St.Label({
         text: this._text,
@@ -189,26 +253,21 @@ const TodoItem = GObject.registerClass(
       });
     }
 
-    /** Tells the DND system who initiated the drag */
     getDragActorSource(): Clutter.Actor {
       return this;
     }
 
-    /** Fired continuously when a dragged item hovers over this item */
     handleDragOver(source: any, _actor: Clutter.Actor, _x: number, _y: number, _time: number): number {
-      // Use duck-typing to verify the source is a valid TodoItem
       if (!source || typeof source.getText !== 'function' || source === this) {
         return (DND as any).DragMotionResult ? (DND as any).DragMotionResult.NO_DROP : 0;
       }
       return (DND as any).DragMotionResult ? (DND as any).DragMotionResult.MOVE_DROP : 2;
     }
 
-    /** Fired when the dragged item is released over this item */
     acceptDrop(source: any, _actor: Clutter.Actor, _x: number, _y: number, _time: number): boolean {
       if (!source || typeof source.getText !== 'function' || source === this) {
         return false;
       }
-      // Emit signal upward: "Move the source text to my position"
       this.emit("todo-move", source.getText(), this._text);
       return true;
     }
@@ -226,6 +285,9 @@ const LightTodoIndicator = GObject.registerClass(
     private _todoSection!: PopupMenu.PopupMenuSection;
     private _entry!: St.Entry;
     private _panelLabel!: St.Label;
+
+    private _textToFocus: string | null = null;
+    private _keepHighlight: boolean = false; // NEW: Tracks highlight requirement across rebuilds
 
     constructor(settings: Gio.Settings) {
       super(0.0, "Light Todo", false);
@@ -273,28 +335,26 @@ const LightTodoIndicator = GObject.registerClass(
 
     private _getTodos(): string[] { return this._settings.get_strv("todos"); }
     private _getCompleted(): string[] { return this._settings.get_strv("completed"); }
+    private _getPinned(): string[] { return this._settings.get_strv("pinned"); }
 
     private _addTodo(text: string): void {
       if (!text) return;
 
       const todos = this._getTodos();
-
       if (todos.includes(text)) {
-        // Log duplicate attempts for debugging
         log(`Attempted to add duplicate todo -> "${text}"`);
         return;
       }
 
-      // Log successful additions
       log(`Successfully added todo -> "${text}"`);
-
       this._settings.set_strv("todos", [...todos, text]);
       this._entry.set_text("");
     }
+
     private _deleteTodo(text: string): void {
       this._settings.set_strv("todos", this._getTodos().filter(t => t !== text));
       this._settings.set_strv("completed", this._getCompleted().filter(t => t !== text));
-      this._settings.set_strv("pinned", this._getPinned().filter(t => t !== text)); // NEW
+      this._settings.set_strv("pinned", this._getPinned().filter(t => t !== text));
     }
 
     private _toggleTodo(text: string): void {
@@ -308,21 +368,18 @@ const LightTodoIndicator = GObject.registerClass(
     private _editTodo(oldText: string, newText: string): void {
       const todos = this._getTodos();
 
-      // Prevent duplicates
       if (todos.includes(newText) && oldText !== newText) {
         log(`Cannot rename to "${newText}": already exists.`);
-        this._refresh(); // Force refresh to reset the UI item back to its old name
+        this._refresh();
         return;
       }
 
-      // Update in todos array
       const pinned = this._getPinned();
       if (pinned.includes(oldText)) {
         const newPinned = pinned.map(t => t === oldText ? newText : t);
         this._settings.set_strv("pinned", newPinned);
       }
 
-      // Update in completed array (if it was completed)
       const completed = this._getCompleted();
       if (completed.includes(oldText)) {
         const newCompleted = completed.map(t => t === oldText ? newText : t);
@@ -337,19 +394,61 @@ const LightTodoIndicator = GObject.registerClass(
 
       if (sourceIndex === -1 || targetIndex === -1 || sourceIndex === targetIndex) return;
 
-      // Remove the item from its current array index
       todos.splice(sourceIndex, 1);
-
-      // Re-find the target index (it shifts if the target was below the source)
       const newTargetIndex = todos.indexOf(targetText);
-
-      // Insert the item just above the drop target
       todos.splice(newTargetIndex, 0, sourceText);
 
       log(`Moved "${sourceText}" to index ${newTargetIndex}`);
       this._settings.set_strv("todos", todos);
     }
-    private _getPinned(): string[] { return this._settings.get_strv("pinned"); }
+
+    private _moveTodoStep(text: string, direction: number, keepHighlight: boolean): void {
+      const todos = this._getTodos();
+      const pinned = this._getPinned();
+      const completed = this._getCompleted();
+      const showCompleted = this._settings.get_boolean("show-completed");
+
+      let visualTodos = [...todos].sort((a, b) => {
+        const aPinned = pinned.includes(a);
+        const bPinned = pinned.includes(b);
+        if (aPinned && !bPinned) return -1;
+        if (!aPinned && bPinned) return 1;
+        return 0;
+      });
+
+      if (!showCompleted) {
+        visualTodos = visualTodos.filter(t => !completed.includes(t));
+      }
+
+      const index = visualTodos.indexOf(text);
+      if (index === -1) return;
+
+      const targetIndex = index + direction;
+      if (targetIndex < 0 || targetIndex >= visualTodos.length) return;
+
+      const targetText = visualTodos[targetIndex];
+
+      const mainTodos = [...todos];
+      const idx1 = mainTodos.indexOf(text);
+      const idx2 = mainTodos.indexOf(targetText);
+
+      mainTodos[idx1] = targetText;
+      mainTodos[idx2] = text;
+
+      const isTargetPinned = pinned.includes(targetText);
+      const isSourcePinned = pinned.includes(text);
+
+      if (isTargetPinned !== isSourcePinned) {
+        let newPinned = [...pinned];
+        if (isTargetPinned) newPinned.push(text);
+        else newPinned = newPinned.filter(p => p !== text);
+        this._settings.set_strv("pinned", newPinned);
+      }
+
+      this._textToFocus = text;
+      this._keepHighlight = keepHighlight; // Memorize highlight intent
+      this._settings.set_strv("todos", mainTodos);
+    }
 
     private _togglePin(text: string): void {
       const pinned = this._getPinned();
@@ -374,31 +473,63 @@ const LightTodoIndicator = GObject.registerClass(
         return;
       }
 
-      // NEW: Sort the todos array so pinned items come first
       const sortedTodos = [...todos].sort((a, b) => {
         const aPinned = pinned.includes(a);
         const bPinned = pinned.includes(b);
-        if (aPinned && !bPinned) return -1; // a moves up
-        if (!aPinned && bPinned) return 1;  // b moves up
-        return 0; // keep original order
+        if (aPinned && !bPinned) return -1;
+        if (!aPinned && bPinned) return 1;
+        return 0;
       });
+
+      let itemToFocus: InstanceType<typeof TodoItem> | null = null;
 
       for (const text of sortedTodos) {
         const isDone = completed.includes(text);
         if (isDone && !showCompleted) continue;
 
         const isPinned = pinned.includes(text);
-        const item = new TodoItem(text, isDone, isPinned);
+        const item = new TodoItem(text, isDone, isPinned, this._settings);
 
         item.connect("todo-toggle", (_i: unknown, t: string) => this._toggleTodo(t));
         item.connect("todo-delete", (_i: unknown, t: string) => this._deleteTodo(t));
         item.connect("todo-edit", (_i: unknown, oldT: string, newT: string) => this._editTodo(oldT, newT));
         item.connect("todo-move", (_i: unknown, src: string, tgt: string) => this._moveTodo(src, tgt));
-        item.connect("todo-pin", (_i: unknown, t: string) => this._togglePin(t)); // NEW
+
+        // Ensure we accept the 3rd boolean arg (keepHi) and pass it along
+        item.connect("todo-move-step", (_i: unknown, src: string, dir: number, keepHi: boolean) => this._moveTodoStep(src, dir, keepHi));
+        item.connect("todo-pin", (_i: unknown, t: string) => this._togglePin(t));
 
         this._todoSection.addMenuItem(item);
+
+        if (text === this._textToFocus) {
+          itemToFocus = item;
+        }
+      }
+
+      // Restore focus and visual state
+      if (itemToFocus) {
+        // Lock the highlight variable locally to avoid state drift if async tasks interleave
+        const highlight = this._keepHighlight;
+
+        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+          if (itemToFocus) {
+            itemToFocus.active = true;
+            itemToFocus.grab_key_focus();
+
+            // Reapply the style class immediately upon recreating the UI
+            if (highlight) {
+              itemToFocus.add_style_class_name("todo-item-modifier-held");
+            }
+          }
+          return GLib.SOURCE_REMOVE;
+        }, null);
+
+        // Reset state lock
+        this._textToFocus = null;
+        this._keepHighlight = false;
       }
     }
+
     override destroy(): void {
       if (this._settingsChangedId) { this._settings.disconnect(this._settingsChangedId); this._settingsChangedId = 0; }
       super.destroy();

@@ -54,6 +54,30 @@ export default class LightTodoPreferences extends ExtensionPreferences {
     });
     appearanceGroup.add(positionRow);
 
+    // ── Group: Behavior ─────────────────────────────────────────────────────
+    const behaviorGroup = new Adw.PreferencesGroup({
+      title: "Behavior",
+      description: "Configure input and interactions",
+    });
+    page.add(behaviorGroup);
+
+    // Keyboard modifier combo
+    const modifierRow = new Adw.ComboRow({
+      title: "Keyboard Reorder Modifier",
+      subtitle: "Hold this key with Up/Down arrows to move items",
+    });
+    const modifierModel = new Gtk.StringList();
+    ["Alt", "Ctrl", "Shift"].forEach(m => modifierModel.append(m));
+    modifierRow.set_model(modifierModel);
+
+    const modifierMap: Record<string, number> = { alt: 0, ctrl: 1, shift: 2 };
+    modifierRow.set_selected(modifierMap[settings.get_string("drag-modifier")] ?? 0);
+    modifierRow.connect("notify::selected", () => {
+      const modifiers = ["alt", "ctrl", "shift"];
+      settings.set_string("drag-modifier", modifiers[modifierRow.get_selected()] ?? "alt");
+    });
+    behaviorGroup.add(modifierRow);
+
     // ── Group: Data ─────────────────────────────────────────────────────────
     const dataGroup = new Adw.PreferencesGroup({
       title: "Data",

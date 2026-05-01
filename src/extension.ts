@@ -19,10 +19,14 @@ const TodoItem = GObject.registerClass(
     Signals: {
       "todo-toggle": { param_types: [GObject.TYPE_STRING] },
       "todo-delete": { param_types: [GObject.TYPE_STRING] },
+      "todo-edit": { param_types: [GObject.TYPE_STRING, GObject.TYPE_STRING] },
     },
   },
   class TodoItem extends PopupMenu.PopupBaseMenuItem {
     private _text: string;
+    private _label: St.Label;
+    private _entry: St.Entry;
+    private _isEditing: boolean = false;
 
     constructor(text: string, completed: boolean = false) {
       super({ activate: false });
@@ -30,29 +34,44 @@ const TodoItem = GObject.registerClass(
 
       const box = new St.BoxLayout({ style_class: "todo-item-box", x_expand: true });
 
-      // 1. Create the button container without a label
+      // 1. Check Button
       const checkBtn = new St.Button({
         style_class: completed ? "todo-check-btn todo-checked" : "todo-check-btn",
         x_align: Clutter.ActorAlign.START,
       });
-
-      // 2. Create the appropriate symbolic icon
-      const checkIcon = new St.Icon({
+      checkBtn.add_child(new St.Icon({
         icon_name: completed ? 'checkbox-checked-symbolic' : 'checkbox-symbolic',
-        style_class: 'todo-check-icon',
-        // icon-size is best set in CSS for better integration
-      });
+        style_class: 'todo-check-icon'
+      }));
 
-      // 3. Add the icon as a child of the button
-      checkBtn.add_child(checkIcon);
-
-      const label = new St.Label({
+      // 2. Main Label
+      this._label = new St.Label({
         text,
         style_class: completed ? "todo-label todo-label-done" : "todo-label",
         x_expand: true,
         y_align: Clutter.ActorAlign.CENTER,
       });
 
+      // 3. Hidden Edit Entry
+      this._entry = new St.Entry({
+        style_class: "todo-edit-entry",
+        text: this._text,
+        x_expand: true,
+        visible: false,
+        can_focus: true,
+      });
+
+      // 4. Edit Button
+      const editBtn = new St.Button({
+        style_class: "todo-edit-btn",
+        x_align: Clutter.ActorAlign.END,
+      });
+      editBtn.add_child(new St.Icon({
+        icon_name: "document-edit-symbolic",
+        style_class: "todo-edit-icon"
+      }));
+
+      // 5. Delete Button
       const deleteBtn = new St.Button({
         style_class: "todo-delete-btn",
         label: "×",
@@ -60,12 +79,72 @@ const TodoItem = GObject.registerClass(
       });
 
       box.add_child(checkBtn);
-      box.add_child(label);
+      box.add_child(this._label);
+      box.add_child(this._entry);
+      box.add_child(editBtn);
       box.add_child(deleteBtn);
       this.add_child(box);
 
+      // Event Connections
       checkBtn.connect("clicked", () => this.emit("todo-toggle", this._text));
       deleteBtn.connect("clicked", () => this.emit("todo-delete", this._text));
+      editBtn.connect("clicked", () => this._startEdit());
+
+      // Wayland-safe Input Handling for the Entry
+      this._entry.clutter_text.connect("activate", () => this._finishEdit());
+      this._entry.clutter_text.connect("key-focus-out", () => {
+        if (this._isEditing) this._finishEdit();
+      });
+
+      this._entry.clutter_text.connect("key-press-event", (_actor: unknown, event: Clutter.Event) => {
+        if (event.get_key_symbol() === Clutter.KEY_Escape) {
+          this._cancelEdit();
+          return Clutter.EVENT_STOP; // Stop propagation so the popup menu doesn't close
+        }
+        return Clutter.EVENT_PROPAGATE;
+      });
+    }
+
+    private _startEdit(): void {
+      if (this._isEditing) return;
+      this._isEditing = true;
+
+      this._label.hide();
+      this._entry.set_text(this._text);
+      this._entry.show();
+
+      // Defer focus grab to the next idle frame to ensure the actor is fully mapped
+      GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+        this._entry.grab_key_focus();
+        return GLib.SOURCE_REMOVE;
+      }, null);
+    }
+
+    private _finishEdit(): void {
+      if (!this._isEditing) return;
+      this._isEditing = false;
+      const newText = this._entry.get_text().trim();
+
+      this._entry.hide();
+      this._label.show();
+
+      if (newText && newText !== this._text) {
+        const oldText = this._text;
+        this._text = newText;
+        this._label.set_text(newText);
+        this.emit("todo-edit", oldText, newText);
+      } else if (!newText) {
+        // Revert to old text visually if they try to save an empty string
+        this._entry.set_text(this._text);
+      }
+    }
+
+    private _cancelEdit(): void {
+      if (!this._isEditing) return;
+      this._isEditing = false;
+      this._entry.hide();
+      this._label.show();
+      this._entry.set_text(this._text);
     }
 
     getText(): string { return this._text; }
@@ -159,6 +238,28 @@ const LightTodoIndicator = GObject.registerClass(
         this._settings.set_strv("completed", [...completed, text]);
     }
 
+    private _editTodo(oldText: string, newText: string): void {
+      const todos = this._getTodos();
+
+      // Prevent duplicates
+      if (todos.includes(newText) && oldText !== newText) {
+        log(`Cannot rename to "${newText}": already exists.`);
+        this._refresh(); // Force refresh to reset the UI item back to its old name
+        return;
+      }
+
+      // Update in todos array
+      const newTodos = todos.map(t => t === oldText ? newText : t);
+      this._settings.set_strv("todos", newTodos);
+
+      // Update in completed array (if it was completed)
+      const completed = this._getCompleted();
+      if (completed.includes(oldText)) {
+        const newCompleted = completed.map(t => t === oldText ? newText : t);
+        this._settings.set_strv("completed", newCompleted);
+      }
+    }
+
     private _refresh(): void {
       this._todoSection.removeAll();
       const todos = this._getTodos();
@@ -176,8 +277,12 @@ const LightTodoIndicator = GObject.registerClass(
         const isDone = completed.includes(text);
         if (isDone && !showCompleted) continue;
         const item = new TodoItem(text, isDone);
+
+        // Connect the 3 signals
         item.connect("todo-toggle", (_i: unknown, t: string) => this._toggleTodo(t));
         item.connect("todo-delete", (_i: unknown, t: string) => this._deleteTodo(t));
+        item.connect("todo-edit", (_i: unknown, oldT: string, newT: string) => this._editTodo(oldT, newT));
+
         this._todoSection.addMenuItem(item);
       }
     }

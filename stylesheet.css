@@ -141,3 +141,33 @@
 .todo-checked .todo-check-icon {
   color: #4a90d9;
 }
+
+/* ── Edit button ──────────────────────────────────────────── */
+
+.todo-edit-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 4px;
+  background-color: transparent;
+  color: #888888;
+  border: none;
+}
+
+.todo-edit-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #cccccc;
+}
+
+.todo-edit-icon {
+  icon-size: 14px;
+}
+
+/* ── Inline Edit Entry ────────────────────────────────────── */
+
+.todo-edit-entry {
+  font-size: 13px;
+  border-radius: 4px;
+  padding: 2px 4px;
+  min-height: 20px;
+}

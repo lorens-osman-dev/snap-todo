@@ -1,0 +1,19 @@
+{
+  "name": "light-todo",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "A lightweight GNOME Shell todo extension",
+  "scripts": {
+    "build": "make build",
+    "pack": "make pack",
+    "install": "make install",
+    "clean": "make clean"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "@girs/gnome-shell": "49.1.0",
+    "@girs/gjs": "4.0.0-rc.7",
+    "@girs/gio-2.0": "2.88.0-4.0.0-rc.7",
+    "@girs/glib-2.0": "2.88.0-4.0.0-rc.7"
+  }
+}

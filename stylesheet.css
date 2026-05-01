@@ -1,0 +1,117 @@
+/* stylesheet.css — Light Todo Extension
+ *
+ * St CSS is a strict subset of CSS.
+ * NOT supported: var(), calc() on colors, darken()/lighten()/alpha(),
+ * @variables, --custom-props, @media, :root, rem units.
+ * Safe: background-color, color, border, padding, font-*, px/em units,
+ * :hover, :active, :focus pseudo-classes, rgba() for colors.
+ */
+
+/* ── Panel button ─────────────────────────────────────────── */
+
+.todo-panel-box {
+  spacing: 4px;
+}
+
+.todo-panel-icon {
+  icon-size: 16px;
+}
+
+.todo-panel-count {
+  font-size: 11px;
+  font-weight: bold;
+}
+
+/* ── Todo item row ────────────────────────────────────────── */
+
+.todo-item-box {
+  spacing: 6px;
+  padding: 2px 0;
+}
+
+.todo-label {
+  font-size: 13px;
+}
+
+.todo-label-done {
+  color: #888888;
+}
+
+/* ── Check button ─────────────────────────────────────────── */
+
+.todo-check-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 11px;
+  border: 2px solid #888888;
+  font-size: 11px;
+  background-color: transparent;
+  color: #cccccc;
+}
+
+.todo-check-btn:hover {
+  border-color: #cccccc;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.todo-checked {
+  background-color: #4a90d9;
+  border-color: #4a90d9;
+  color: #ffffff;
+}
+
+/* ── Delete button ────────────────────────────────────────── */
+
+.todo-delete-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: bold;
+  background-color: transparent;
+  color: #888888;
+  border: 1px solid transparent;
+}
+
+.todo-delete-btn:hover {
+  background-color: rgba(220, 50, 50, 0.2);
+  color: #ff6b6b;
+  border-color: rgba(220, 50, 50, 0.4);
+}
+
+/* ── Entry row ────────────────────────────────────────────── */
+
+.todo-entry {
+  min-width: 180px;
+  border-radius: 6px;
+}
+
+.todo-add-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  margin-left: 4px;
+  border-radius: 6px;
+  font-size: 18px;
+  font-weight: bold;
+  background-color: #4a90d9;
+  color: #ffffff;
+  border: 1px solid #3a7bc8;
+}
+
+.todo-add-btn:hover {
+  background-color: #3a7bc8;
+}
+
+.todo-add-btn:active {
+  background-color: #2d6ab8;
+}
+
+/* ── Empty state ──────────────────────────────────────────── */
+
+.todo-empty-label {
+  color: #888888;
+  font-style: italic;
+}

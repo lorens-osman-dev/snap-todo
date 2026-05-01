@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.light-todo"
+          path="/org/gnome/shell/extensions/light-todo/">
+
+    <key name="todos" type="as">
+      <default>[]</default>
+      <summary>List of todo items</summary>
+      <description>An array of todo item strings stored as plain text</description>
+    </key>
+
+    <key name="completed" type="as">
+      <default>[]</default>
+      <summary>Completed todo items</summary>
+      <description>An array of completed todo item strings</description>
+    </key>
+
+    <key name="show-completed" type="b">
+      <default>false</default>
+      <summary>Show completed items</summary>
+      <description>Whether to show completed items in the panel menu</description>
+    </key>
+
+    <key name="panel-position" type="s">
+      <default>'right'</default>
+      <summary>Panel position</summary>
+      <description>Where to place the indicator: left, center, right</description>
+    </key>
+
+  </schema>
+</schemalist>

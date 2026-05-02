@@ -151,7 +151,6 @@ export const LightTodoIndicator = GObject.registerClass(
       const copyActiveBtn = new St.Button({ style_class: "todo-header-btn", y_align: Clutter.ActorAlign.CENTER });
       copyActiveBtn.add_child(new St.Icon({ icon_name: "edit-copy-symbolic", style_class: "todo-header-icon" }));
       copyActiveBtn.connect("clicked", () => this._copyToClipboard(false));
-      setupTooltip(copyActiveBtn, "Copy Uncompleted Todos");
 
       const copyAllBtn = new St.Button({
         style_class: "todo-header-btn",
@@ -163,7 +162,6 @@ export const LightTodoIndicator = GObject.registerClass(
         style_class: "todo-header-icon"
       }));
       copyAllBtn.connect("clicked", () => this._copyToClipboard(true));
-      setupTooltip(copyAllBtn, "Copy all Todos");
 
       const settingsBtn = new St.Button({ style_class: "todo-header-btn", y_align: Clutter.ActorAlign.CENTER });
       settingsBtn.add_child(new St.Icon({ icon_name: "emblem-system-symbolic", style_class: "todo-header-icon" }));

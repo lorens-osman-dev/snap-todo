@@ -3,9 +3,6 @@
  *
  * Responsibility: Manages the full-height side panel Wayland UI.
  */
-/**
- * ui/drawer.ts
- */
 
 import St from "gi://St";
 import Clutter from "gi://Clutter";

@@ -400,6 +400,7 @@ const LightTodoIndicator = GObject.registerClass(
     private _panelLabel!: St.Label;
     private _desktopSettings: Gio.Settings;
     private _themeChangedId: number = 0;
+    private _drawer: TodoDrawer | null = null;
 
     // NEW: Keep a reference to the inner box
     private _panelBox!: St.BoxLayout;
@@ -411,6 +412,8 @@ const LightTodoIndicator = GObject.registerClass(
       super(0.0, "Light Todo", false);
       this._settings = settings;
 
+      // Initialize the custom drawer
+      this._drawer = new TodoDrawer();
       // Set initial visibility and listen for changes
       this.visible = this._settings.get_boolean("show-indicator");
       this._settings.connect("changed::show-indicator", () => {
@@ -421,6 +424,23 @@ const LightTodoIndicator = GObject.registerClass(
       this._buildMenu(extension);
       this._refresh();
 
+
+      // NEW: Connect the drawer's add button and enter key
+      this._drawer.addBtn.connect("clicked", () => {
+        const text = this._drawer!.entry.get_text().trim();
+        if (text) {
+          this._addTodo(text);
+          this._drawer!.entry.set_text("");
+        }
+      });
+      this._drawer.entry.clutter_text.connect("activate", () => {
+        const text = this._drawer!.entry.get_text().trim();
+        if (text) {
+          this._addTodo(text);
+          this._drawer!.entry.set_text("");
+        }
+      });
+
       // NEW: Set initial visibility and listen for changes securely
       this._updateVisibility();
       this._settings.connect("changed::show-indicator", () => this._updateVisibility());
@@ -429,19 +449,29 @@ const LightTodoIndicator = GObject.registerClass(
 
       // Intercept Clutter pointer events for right-click handling
       this.connect('button-press-event', (actor, event) => {
-        // 3 represents the secondary mouse button (Right-click)
-        if (event.get_button() === 3) {
-          // Launch the isolated GTK4/Adwaita preferences process
+        const button = event.get_button();
+
+        // Right-click: Open Settings
+        if (button === 3) {
           extension.openPreferences();
-
-          // Ensure the popup menu stays closed
           this.menu.close();
-
-          // Stop propagation to prevent the shell from toggling the menu
           return Clutter.EVENT_STOP;
         }
 
-        // Let standard left-clicks pass through to open the todo list
+        // Left-click: Intercept for Drawer mode
+        if (button === 1 && this._settings.get_boolean("use-drawer")) {
+          // Cast to any to safely check isOpen
+          if ((this.menu as any).isOpen) {
+            this.menu.close();
+          }
+
+          // Toggle our custom Wayland drawer surface
+          this._drawer?.toggle();
+
+          // Prevent GNOME from processing the click and opening the standard menu
+          return Clutter.EVENT_STOP;
+        }
+
         return Clutter.EVENT_PROPAGATE;
       });
 
@@ -455,6 +485,9 @@ const LightTodoIndicator = GObject.registerClass(
       this._themeChangedId = this._desktopSettings.connect("changed::color-scheme", () => {
         this._updateThemeClass();
       });
+
+      // Ensure the drawer closes if the user hits "Escape" or opens the overview
+      Main.overview.connect('showing', () => this._drawer?.close())
     }
 
     private _buildPanel(): void {
@@ -858,30 +891,33 @@ const LightTodoIndicator = GObject.registerClass(
     }
 
     private _refresh(): void {
-      // CLEANUP: Destroy old actors
+      // CLEANUP: Destroy old actors in both locations
       this._todoSection.removeAll();
       this._completedSubMenu.menu.removeAll();
+      if (this._drawer && this._drawer.itemContainer) {
+        this._drawer.itemContainer.destroy_all_children();
+      }
 
       const todos = this._getTodos();
       const completed = this._getCompleted();
       const pinned = this._getPinned();
       const showCompleted = this._settings.get_boolean("show-completed");
+      const useDrawer = this._settings.get_boolean("use-drawer"); // Check drawer state
 
-      // Calculate counts
       const activeTodos = todos.filter(t => !completed.includes(t));
       const activeCount = activeTodos.length;
       const completedCount = todos.length - activeCount;
 
-      // Update Panel indicator
       this._panelLabel.set_text(String(activeCount));
-
-      // Update Menu UI Labels dynamically
       this._headerLabel.set_text(`Todos (${activeCount})`);
       this._completedSubMenu.label.set_text(`Completed (${completedCount})`);
 
-      // Handle empty state for active tasks
-      if (activeCount === 0) {
-        this._todoSection.addMenuItem(new PopupMenu.PopupMenuItem("No active todos yet  ✨", { reactive: false, style_class: "todo-empty-label" }));
+      if (activeCount === 0 && !useDrawer) {
+        this._todoSection.addMenuItem(new PopupMenu.PopupMenuItem("No active todos yet ✨", { reactive: false, style_class: "todo-empty-label" }));
+      } else if (activeCount === 0 && useDrawer) {
+        // Empty state for the drawer
+        const emptyLabel = new St.Label({ text: "No active todos yet ✨", style_class: "todo-empty-label", margin_top: 24 });
+        this._drawer!.itemContainer.add_child(emptyLabel);
       }
 
       const sortedTodos = [...todos].sort((a, b) => {
@@ -908,10 +944,15 @@ const LightTodoIndicator = GObject.registerClass(
         item.connect("todo-move-step", (_i: unknown, src: string, dir: number, keepHi: boolean) => this._moveTodoStep(src, dir, keepHi));
         item.connect("todo-pin", (_i: unknown, t: string) => this._togglePin(t));
 
-        if (isDone) {
-          this._completedSubMenu.menu.addMenuItem(item);
+        // ROUTING: Push to the drawer if enabled, otherwise push to the menu
+        if (useDrawer) {
+          this._drawer!.itemContainer.add_child(item);
         } else {
-          this._todoSection.addMenuItem(item);
+          if (isDone) {
+            this._completedSubMenu.menu.addMenuItem(item);
+          } else {
+            this._todoSection.addMenuItem(item);
+          }
         }
 
         if (text === this._textToFocus) {
@@ -919,10 +960,8 @@ const LightTodoIndicator = GObject.registerClass(
         }
       }
 
-      // Automatically hide the collapsible section if it's empty or disabled
-      this._completedSubMenu.visible = (showCompleted && completedCount > 0);
+      this._completedSubMenu.visible = (showCompleted && completedCount > 0 && !useDrawer);
 
-      // Restore focus and visual state
       if (itemToFocus) {
         const highlight = this._keepHighlight;
         GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
@@ -935,20 +974,10 @@ const LightTodoIndicator = GObject.registerClass(
           }
           return GLib.SOURCE_REMOVE;
         }, null);
-      } else if (this._textToFocus) {
-        // Fallback: If the item was hidden entirely (e.g. show-completed is off),
-        // fallback to focusing the input entry so the mouse doesn't hijack focus.
-        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-          if (this._entry && this._entry.is_mapped()) {
-            this._entry.grab_key_focus();
-          }
-          return GLib.SOURCE_REMOVE;
-        }, null);
-      }
 
-      // Always clear out the trackers when we are done
-      this._textToFocus = null;
-      this._keepHighlight = false;
+        this._textToFocus = null;
+        this._keepHighlight = false;
+      }
     }
 
     // NEW: Wayland-native Clipboard implementation
@@ -1011,7 +1040,16 @@ const LightTodoIndicator = GObject.registerClass(
     }
 
     override destroy(): void {
-      if (this._settingsChangedId) { this._settings.disconnect(this._settingsChangedId); this._settingsChangedId = 0; }
+      // CLEANUP: Destroy the drawer actors to prevent UI ghosting/memory leaks
+      if (this._drawer) {
+        this._drawer.destroy();
+        this._drawer = null;
+      }
+
+      if (this._settingsChangedId) {
+        this._settings.disconnect(this._settingsChangedId);
+        this._settingsChangedId = 0;
+      }
       super.destroy();
     }
   }
@@ -1190,3 +1228,151 @@ const Logger = {
     printerr(output);
   }
 };
+
+
+// ─── Custom Drawer Component ─────────────────────────────────────────────────
+
+// ─── Custom Drawer Component ─────────────────────────────────────────────────
+
+class TodoDrawer {
+  public actor: St.BoxLayout;
+  public itemContainer: St.BoxLayout; // NEW: Where the todos will live
+  public entry: St.Entry;             // NEW: Drawer input field
+  public addBtn: St.Button;           // NEW: Drawer add button
+
+  private _shield: St.Button;
+  private _isOpen: boolean = false;
+  private _drawerWidth: number = 400;
+
+  constructor() {
+    this._shield = new St.Button({
+      style_class: "todo-drawer-shield",
+      reactive: true,
+      x_expand: true,
+      y_expand: true,
+      visible: false,
+    });
+
+    this.actor = new St.BoxLayout({
+      vertical: true,
+      style_class: "todo-drawer",
+      reactive: true,
+      width: this._drawerWidth,
+      visible: false,
+    });
+
+    // ── Drawer Header ──
+    const headerBox = new St.BoxLayout({ margin_bottom: 16, margin_top: 8 });
+    const headerLabel = new St.Label({
+      text: "My Todos",
+      style: "font-weight: bold; font-size: 24px; color: #ffffff;",
+      y_align: Clutter.ActorAlign.CENTER
+    });
+    headerBox.add_child(headerLabel);
+    this.actor.add_child(headerBox);
+
+    // ── Scrollable Item List ──
+    const scrollView = new St.ScrollView({
+      x_expand: true,
+      y_expand: true,
+    });
+    this.itemContainer = new St.BoxLayout({ vertical: true, x_expand: true });
+    scrollView.add_child(this.itemContainer);
+    this.actor.add_child(scrollView);
+
+    // ── Entry Field ──
+    const entryBox = new St.BoxLayout({ x_expand: true, margin_top: 16 });
+    this.entry = new St.Entry({
+      style_class: "todo-entry",
+      hint_text: "Add a todo…",
+      x_expand: true,
+      can_focus: true
+    });
+    this.addBtn = new St.Button({
+      style_class: "todo-add-btn",
+      label: "+",
+      can_focus: true
+    });
+    entryBox.add_child(this.entry);
+    entryBox.add_child(this.addBtn);
+    this.actor.add_child(entryBox);
+
+    // Inject into UI Group
+    Main.layoutManager.uiGroup.add_child(this._shield);
+    Main.layoutManager.uiGroup.add_child(this.actor);
+
+    this._updateGeometry();
+    Main.layoutManager.connect("monitors-changed", () => this._updateGeometry());
+    this._shield.connect("clicked", () => this.close());
+  }
+
+  private _updateGeometry(): void {
+    const monitor = Main.layoutManager.primaryMonitor;
+    if (!monitor) return;
+
+    this._shield.set_position(monitor.x, monitor.y);
+    this._shield.set_size(monitor.width, monitor.height);
+
+    this.actor.set_height(monitor.height);
+    this.actor.set_position(monitor.x + monitor.width, monitor.y);
+  }
+
+  public toggle(): void { this._isOpen ? this.close() : this.open(); }
+
+  public open(): void {
+    if (this._isOpen) return;
+    this._isOpen = true;
+
+    const monitor = Main.layoutManager.primaryMonitor;
+    if (!monitor) return;
+
+    this._shield.show();
+    this.actor.show();
+
+    this._shield.opacity = 0;
+    (this._shield as any).ease({
+      opacity: 255,
+      duration: 250,
+      mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+    });
+
+    (this.actor as any).ease({
+      x: monitor.x + monitor.width - this._drawerWidth,
+      duration: 300,
+      mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+    });
+
+    // Auto-focus the entry field when drawer opens
+    GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+      this.entry.grab_key_focus();
+      return GLib.SOURCE_REMOVE;
+    }, null);
+  }
+
+  public close(): void {
+    if (!this._isOpen) return;
+    this._isOpen = false;
+
+    const monitor = Main.layoutManager.primaryMonitor;
+    if (!monitor) return;
+
+    (this._shield as any).ease({
+      opacity: 0,
+      duration: 250,
+      mode: Clutter.AnimationMode.EASE_IN_QUAD,
+      onComplete: () => this._shield.hide(),
+    });
+
+    (this.actor as any).ease({
+      x: monitor.x + monitor.width,
+      duration: 300,
+      mode: Clutter.AnimationMode.EASE_IN_CUBIC,
+      onComplete: () => this.actor.hide(),
+    });
+  }
+
+  public destroy(): void {
+    this._shield.destroy();
+    this.actor.destroy();
+  }
+}

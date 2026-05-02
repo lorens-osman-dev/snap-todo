@@ -50,6 +50,10 @@
       <summary>Show in Panel</summary>
       <description>Whether to show the extension indicator in the top panel</description>
     </key>
-
+    <key name="use-drawer" type="b">
+      <default>false</default>
+      <summary>Use slide-out drawer</summary>
+      <description>If true, opens a full-height drawer from the right edge instead of a standard menu.</description>
+    </key>
   </schema>
 </schemalist>

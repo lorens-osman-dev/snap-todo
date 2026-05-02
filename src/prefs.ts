@@ -61,7 +61,13 @@ export default class LightTodoPreferences extends ExtensionPreferences {
       settings.set_string("panel-position", positions[positionRow.get_selected()] ?? "right");
     });
     appearanceGroup.add(positionRow);
-
+    // NEW: Toggle Drawer Mode
+    const useDrawerRow = new Adw.SwitchRow({
+      title: "Use Slide-out Drawer",
+      subtitle: "Open todos in a full-height side panel instead of a menu",
+    });
+    settings.bind("use-drawer", useDrawerRow, "active", Gio.SettingsBindFlags.DEFAULT);
+    appearanceGroup.add(useDrawerRow);
     // ── Group: Behavior ─────────────────────────────────────────────────────
     const behaviorGroup = new Adw.PreferencesGroup({
       title: "Behavior",

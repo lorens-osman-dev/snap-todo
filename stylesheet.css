@@ -352,3 +352,17 @@
 .todo-header-btn:hover {
   background-color: rgba(128, 128, 128, 0.15); 
 }
+
+/* ── Drawer UI ────────────────────────────────────────────── */
+
+.todo-drawer-shield {
+  background-color: rgba(0, 0, 0, 0.4);
+  /* Invisible until opened, but captures clicks when active */
+}
+
+.todo-drawer {
+  background-color: rgba(30, 30, 30, 0.98);
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.6);
+  padding: 12px;
+}

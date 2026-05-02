@@ -1,30 +1,61 @@
 /**
- * ui/drawer.ts
+ * ui/drawer.ts — Slide-in Drawer Surface
  *
- * Responsibility: Manages the full-height side panel Wayland UI.
+ * Responsibility:
+ *   - Render a Wayland-native slide-in drawer for the todo list
+ *   - Manage open/close animations and the semi-transparent shield
+ *   - Expose `itemContainer`, `entry`, and `addBtn` for the indicator to wire
+ *
+ * Does NOT:
+ *   - Manage todo data (that belongs to TodosService)
+ *   - Know about the panel indicator
+ *
+ * Lifecycle:
+ *   const drawer = new TodoDrawer();
+ *   // … wire signals to indicator …
+ *   drawer.open();
+ *   drawer.close();
+ *   drawer.destroy(); // always call in disable()
  */
 
 import St from "gi://St";
-import Clutter from "gi://Clutter";
 import GLib from "gi://GLib";
+import Clutter from "gi://Clutter";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
-import { setupTooltip } from "../utils/tooltip.js";
-import { TodosService } from "../services/todosService.js";
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const DRAWER_WIDTH_PX = 400;
+
+// ─── Drawer Class ─────────────────────────────────────────────────────────────
 
 export class TodoDrawer {
-  public actor: St.BoxLayout;
-  public itemContainer: St.BoxLayout;
-  public entry: St.Entry;
-  public addBtn: St.Button;
 
-  private _shield: St.Button;
+  // ─── Public Surfaces (wired by the indicator) ────────────────────────────
+
+  /** Container for TodoItem widgets; rebuild its children on every refresh */
+  public readonly itemContainer: St.BoxLayout;
+
+  /** Text input for adding new todos */
+  public readonly entry: St.Entry;
+
+  /** "+" button for confirming a new todo */
+  public readonly addBtn: St.Button;
+
+  // ─── Private Actors ───────────────────────────────────────────────────────
+
+  /** Full-screen semi-transparent overlay; clicking it closes the drawer */
+  private readonly _shield: St.Button;
+
+  /** The visible drawer panel actor */
+  private readonly _actor: St.BoxLayout;
+
   private _isOpen: boolean = false;
-  private _drawerWidth: number = 400;
-  private _service: TodosService;
 
-  constructor(service: TodosService) {
-    this._service = service;
+  // ─── Constructor ──────────────────────────────────────────────────────────
 
+  constructor() {
+    // ── Shield (full-screen backdrop) ──────────────────────────────────────
     this._shield = new St.Button({
       style_class: "todo-drawer-shield",
       reactive: true,
@@ -33,148 +64,137 @@ export class TodoDrawer {
       visible: false,
     });
 
-    this.actor = new St.BoxLayout({
+    // ── Drawer panel ──────────────────────────────────────────────────────
+    this._actor = new St.BoxLayout({
       vertical: true,
       style_class: "todo-drawer",
       reactive: true,
-      width: this._drawerWidth,
+      width: DRAWER_WIDTH_PX,
       visible: false,
     });
 
-    // ── Drawer Header with Copy Buttons ──
+    // ── Header ────────────────────────────────────────────────────────────
     const headerBox = new St.BoxLayout({ margin_bottom: 16, margin_top: 8 });
-    const headerLabel = new St.Label({
+    headerBox.add_child(new St.Label({
       text: "My Todos",
       style: "font-weight: bold; font-size: 24px; color: #ffffff;",
       y_align: Clutter.ActorAlign.CENTER,
-      x_expand: true // Pushes the copy buttons to the far right
-    });
-    headerBox.add_child(headerLabel);
+    }));
+    this._actor.add_child(headerBox);
 
-    const copyActiveBtn = new St.Button({ style_class: "todo-header-btn", y_align: Clutter.ActorAlign.CENTER });
-    copyActiveBtn.add_child(new St.Icon({ icon_name: "edit-copy-symbolic", style_class: "todo-header-icon" }));
-    copyActiveBtn.connect("clicked", () => this._copyToClipboard(false));
-    setupTooltip(copyActiveBtn, "Copy Uncompleted Todos");
-
-    const copyAllBtn = new St.Button({ style_class: "todo-header-btn", y_align: Clutter.ActorAlign.CENTER });
-    copyAllBtn.add_child(new St.Icon({ icon_name: "edit-paste-symbolic", style_class: "todo-header-icon" }));
-    copyAllBtn.connect("clicked", () => this._copyToClipboard(true));
-    setupTooltip(copyAllBtn, "Copy all Todos");
-
-    headerBox.add_child(copyActiveBtn);
-    headerBox.add_child(copyAllBtn);
-
-    this.actor.add_child(headerBox);
-
-    const scrollView = new St.ScrollView({
-      x_expand: true,
-      y_expand: true,
-    });
+    // ── Scrollable list ────────────────────────────────────────────────────
+    const scrollView = new St.ScrollView({ x_expand: true, y_expand: true });
     this.itemContainer = new St.BoxLayout({ vertical: true, x_expand: true });
     scrollView.add_child(this.itemContainer);
-    this.actor.add_child(scrollView);
+    this._actor.add_child(scrollView);
 
+    // ── Entry row ──────────────────────────────────────────────────────────
     const entryBox = new St.BoxLayout({ x_expand: true, margin_top: 16 });
     this.entry = new St.Entry({
       style_class: "todo-entry",
       hint_text: "Add a todo…",
       x_expand: true,
-      can_focus: true
+      can_focus: true,
     });
     this.addBtn = new St.Button({
       style_class: "todo-add-btn",
       label: "+",
-      can_focus: true
+      can_focus: true,
     });
     entryBox.add_child(this.entry);
     entryBox.add_child(this.addBtn);
-    this.actor.add_child(entryBox);
+    this._actor.add_child(entryBox);
 
+    // ── Inject into the global UI layer ───────────────────────────────────
     Main.layoutManager.uiGroup.add_child(this._shield);
-    Main.layoutManager.uiGroup.add_child(this.actor);
+    Main.layoutManager.uiGroup.add_child(this._actor);
 
+    // ── Geometry & signals ─────────────────────────────────────────────────
     this._updateGeometry();
     Main.layoutManager.connect("monitors-changed", () => this._updateGeometry());
     this._shield.connect("clicked", () => this.close());
   }
 
-  // Same Wayland clipboard implementation decoupled via TodosService
-  private _copyToClipboard(all: boolean): void {
-    const todos = this._service.getTodos();
-    const completed = this._service.getCompleted();
-
-    const activeTodos = todos.filter(t => !completed.includes(t));
-    const completedTodos = todos.filter(t => completed.includes(t));
-
-    let lines: string[] = [];
-
-    if (!all) {
-      if (activeTodos.length === 0) return;
-      lines.push("# Todos:");
-      activeTodos.forEach(t => lines.push(`- [ ] ${t}`));
-    } else {
-      if (todos.length === 0) return;
-      if (activeTodos.length > 0) {
-        lines.push("# Todos:");
-        activeTodos.forEach(t => lines.push(`- [ ] ${t}`));
-      }
-      if (completedTodos.length > 0) {
-        lines.push("# Completed Todos:");
-        completedTodos.forEach(t => lines.push(`- [x] ${t}`));
-      }
-    }
-
-    const text = lines.join("\n");
-    St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, text);
-
-    const count = all ? todos.length : activeTodos.length;
-    Main.notify("Light Todo", `Copied ${count} item(s) to clipboard`);
-
-    this.close(); // Automatically dismiss the drawer after a successful copy
-  }
+  // ─── Geometry ─────────────────────────────────────────────────────────────
 
   private _updateGeometry(): void {
     const monitor = Main.layoutManager.primaryMonitor;
     if (!monitor) return;
+
+    // Shield covers the whole primary monitor
     this._shield.set_position(monitor.x, monitor.y);
     this._shield.set_size(monitor.width, monitor.height);
-    this.actor.set_height(monitor.height);
-    this.actor.set_position(monitor.x + monitor.width, monitor.y);
+
+    // Drawer starts just off the right edge
+    this._actor.set_height(monitor.height);
+    this._actor.set_position(monitor.x + monitor.width, monitor.y);
   }
 
-  public toggle(): void { this._isOpen ? this.close() : this.open(); }
+  // ─── Public API ───────────────────────────────────────────────────────────
 
-  public open(): void {
+  toggle(): void { this._isOpen ? this.close() : this.open(); }
+
+  open(): void {
     if (this._isOpen) return;
     this._isOpen = true;
+
     const monitor = Main.layoutManager.primaryMonitor;
     if (!monitor) return;
 
-    this._shield.show();
-    this.actor.show();
-
     this._shield.opacity = 0;
-    (this._shield as any).ease({ opacity: 255, duration: 250, mode: Clutter.AnimationMode.EASE_OUT_QUAD });
-    (this.actor as any).ease({ x: monitor.x + monitor.width - this._drawerWidth, duration: 300, mode: Clutter.AnimationMode.EASE_OUT_CUBIC });
+    this._shield.show();
+    this._actor.show();
 
+    // Fade in the shield
+    (this._shield as any).ease({
+      opacity: 255,
+      duration: 250,
+      mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+    });
+
+    // Slide in the drawer panel from the right
+    (this._actor as any).ease({
+      x: monitor.x + monitor.width - DRAWER_WIDTH_PX,
+      duration: 300,
+      mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+    });
+
+    // Auto-focus the entry field after the animation starts
     GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
       this.entry.grab_key_focus();
       return GLib.SOURCE_REMOVE;
     }, null);
   }
 
-  public close(): void {
+  close(): void {
     if (!this._isOpen) return;
     this._isOpen = false;
+
     const monitor = Main.layoutManager.primaryMonitor;
     if (!monitor) return;
 
-    (this._shield as any).ease({ opacity: 0, duration: 250, mode: Clutter.AnimationMode.EASE_IN_QUAD, onComplete: () => this._shield.hide() });
-    (this.actor as any).ease({ x: monitor.x + monitor.width, duration: 300, mode: Clutter.AnimationMode.EASE_IN_CUBIC, onComplete: () => this.actor.hide() });
+    // Fade out the shield
+    (this._shield as any).ease({
+      opacity: 0,
+      duration: 250,
+      mode: Clutter.AnimationMode.EASE_IN_QUAD,
+      onComplete: () => this._shield.hide(),
+    });
+
+    // Slide the panel back off-screen
+    (this._actor as any).ease({
+      x: monitor.x + monitor.width,
+      duration: 300,
+      mode: Clutter.AnimationMode.EASE_IN_CUBIC,
+      onComplete: () => this._actor.hide(),
+    });
   }
 
-  public destroy(): void {
+  get isOpen(): boolean { return this._isOpen; }
+
+  /** Must be called in the extension's disable() to prevent UI ghosts */
+  destroy(): void {
     this._shield.destroy();
-    this.actor.destroy();
+    this._actor.destroy();
   }
 }

@@ -65,18 +65,25 @@ export const LightTodoIndicator = GObject.registerClass(
       this._settings.connect("changed::show-indicator", () => this._updateVisibility());
       this._settingsChangedId = this._settings.connect("changed", () => this._refresh());
 
+      // when press on indicator icon on topbar
       this.connect('button-press-event', (actor, event) => {
         const button = event.get_button();
+
+        // Right-click: Open preferences
         if (button === 3) {
           extension.openPreferences();
-          this.menu.close();
+          if ((this.menu as any).isOpen) this.menu.close();
           return Clutter.EVENT_STOP;
         }
+
+        // Left-click: ONLY intercept if we are using the drawer
         if (button === 1 && this._service.getUseDrawer()) {
           if ((this.menu as any).isOpen) this.menu.close();
           this._drawer?.toggle();
           return Clutter.EVENT_STOP;
         }
+
+        // Critical: Let GNOME natively handle everything else (including menu mode)
         return Clutter.EVENT_PROPAGATE;
       });
 
@@ -279,6 +286,20 @@ export const LightTodoIndicator = GObject.registerClass(
       } else {
         menuActor.add_style_class_name("todo-light-theme");
         menuActor.remove_style_class_name("todo-dark-theme");
+      }
+    }
+
+    public toggleUI(): void {
+      if (this._service.getUseDrawer()) {
+        // Close the panel menu if it happens to be open
+        if ((this.menu as any).isOpen) {
+          this.menu.close();
+        }
+        this._drawer?.toggle();
+      } else {
+        // Close the drawer if it happens to be open
+        this._drawer?.close();
+        this.menu.toggle();
       }
     }
 

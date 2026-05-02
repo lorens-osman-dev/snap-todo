@@ -1,6 +1,9 @@
 /**
  * extension.ts — Light Todo GNOME Shell Extension
  */
+
+// @ts-ignore
+import * as Util from "resource:///org/gnome/shell/misc/util.js";
 import Meta from "gi://Meta";
 import Shell from "gi://Shell";
 import GObject from "gi://GObject";
@@ -240,10 +243,18 @@ const TodoItem = GObject.registerClass(
         return Clutter.EVENT_PROPAGATE;
       });
 
+      // Handle Arrow Key navigation (changes visual 'active' state)
       this.connect('notify::active', () => {
-        if (!this.active) {
+        if (this.active) {
+          this._scrollToItem();
+        } else {
           this.remove_style_class_name("todo-item-modifier-held");
         }
+      });
+
+      // Handle Tab Key navigation (changes Clutter key-focus)
+      this.connect('key-focus-in', () => {
+        this._scrollToItem();
       });
     }
 
@@ -285,6 +296,47 @@ const TodoItem = GObject.registerClass(
       this._entry.hide();
       this._label.show();
       this._entry.set_text(this._text);
+    }
+    private _scrollToItem(): void {
+      GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+        if (!this.is_mapped()) return GLib.SOURCE_REMOVE;
+
+        let parent = this.get_parent();
+        let scrollView: any = null;
+
+        // 1. Duck-type search: bypasses GJS 'instanceof' proxy bugs 
+        // by looking specifically for the scrollbar property.
+        while (parent) {
+          if ('vscroll' in parent || typeof (parent as any).get_vscroll_bar === 'function') {
+            scrollView = parent;
+            break;
+          }
+          parent = parent.get_parent();
+        }
+
+        // 2. Pure Clutter math to calculate visible bounds
+        if (scrollView && scrollView.vscroll && scrollView.vscroll.adjustment) {
+          const adj = scrollView.vscroll.adjustment;
+
+          // Get absolute Y coordinate of the Item and the ScrollView on the screen
+          const [, itemY] = this.get_transformed_position();
+          const [, svY] = scrollView.get_transformed_position();
+
+          const relativeY = itemY - svY; // Position relative to the visible window
+          const itemHeight = this.height;
+          const visibleHeight = scrollView.height;
+
+          if (relativeY < 0) {
+            // Item is hidden above the view; scroll up
+            adj.value += relativeY;
+          } else if (relativeY + itemHeight > visibleHeight) {
+            // Item is hidden below the view; scroll down
+            adj.value += (relativeY + itemHeight - visibleHeight);
+          }
+        }
+
+        return GLib.SOURCE_REMOVE;
+      }, null);
     }
 
     // ─── DND Delegate Methods ──────────────────────────────────────────────────
@@ -1014,7 +1066,7 @@ function setupTooltip(actor: St.Widget, text: string | (() => string)): void {
         tooltip.set_position(tipX, tipY);
 
         return GLib.SOURCE_REMOVE;
-      });
+      }, null);
     } else {
       destroyTooltip();
     }

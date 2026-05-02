@@ -77,7 +77,7 @@ const TodoItem = GObject.registerClass(
         style_class: 'todo-check-icon'
       }));
 
-      setupTooltip(checkBtn, "Mark this Todo as completed / press Space Key");
+      setupTooltip(checkBtn, completed ? "Make it incomplete / press Space Key" : "Mark this Todo as completed / press Space Key");
 
       this._label = new St.Label({
         text,

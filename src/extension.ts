@@ -65,17 +65,24 @@ export default class LightTodoExtension extends Extension {
       this._updatePosition();
 
       // Global keyboard shortcut (reads the keybinding from GSettings automatically)
+      // Dynamically respects the use-drawer setting: toggles drawer when enabled,
+      // otherwise toggles the dropdown menu.
       Main.wm.addKeybinding(
         "toggle-shortcut",
         this._settings,
         Meta.KeyBindingFlags.NONE,
         Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
         () => {
-          if (this._indicator) {
-            // Use the new routing method instead of hardcoding menu.toggle()
-            this._indicator.toggleUI();
+          if (this._settings?.get_boolean("use-drawer")) {
+            // Drawer mode: toggle the slide-out drawer
+            this._drawer?.toggle();
+          } else {
+            // Menu mode: toggle the panel dropdown menu
+            if (this._indicator?.menu) {
+              this._indicator.menu.toggle();
+            }
           }
-        }
+        },
       );
 
       Logger.info("enabled");

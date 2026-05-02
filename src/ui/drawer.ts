@@ -2,20 +2,21 @@
  * ui/drawer.ts — Slide-in Drawer Surface
  *
  * Responsibility:
- * - Render a Wayland-native slide-in drawer for the todo list
- * - Manage open/close animations and the semi-transparent shield
- * - Expose `itemContainer`, `entry`, and `addBtn` for the indicator to wire
+ *   - Render a Wayland-native slide-in drawer for the todo list
+ *   - Manage open/close animations and the semi-transparent shield
+ *   - Expose `itemContainer`, `entry`, and `addBtn` for the indicator to wire
+ *   - Provide header action buttons (copy active, copy all, settings)
  *
  * Does NOT:
- * - Manage todo data (that belongs to TodosService)
- * - Know about the panel indicator
+ *   - Manage todo data (that belongs to TodosService)
+ *   - Know about the panel indicator
  *
  * Lifecycle:
- * const drawer = new TodoDrawer(service, extension);
- * // … wire signals to indicator …
- * drawer.open();
- * drawer.close();
- * drawer.destroy(); // always call in disable()
+ *   const drawer = new TodoDrawer(service, extension);
+ *   // … wire signals to indicator …
+ *   drawer.open();
+ *   drawer.close();
+ *   drawer.destroy(); // always call in disable()
  */
 
 import St from "gi://St";
@@ -56,9 +57,18 @@ export class TodoDrawer {
 
   private _isOpen: boolean = false;
 
+  /** Service reference for header button actions */
+  private readonly _service: TodosService;
+
+  /** Extension reference for opening preferences */
+  private readonly _extension: Extension;
+
   // ─── Constructor ──────────────────────────────────────────────────────────
 
   constructor(service: TodosService, extension: Extension) {
+    this._service = service;
+    this._extension = extension;
+
     // ── Shield (full-screen backdrop) ──────────────────────────────────────
     this._shield = new St.Button({
       style_class: "todo-drawer-shield",
@@ -77,44 +87,45 @@ export class TodoDrawer {
       visible: false,
     });
 
-    // ── Header ────────────────────────────────────────────────────────────
-    const headerBox = new St.BoxLayout({ margin_bottom: 16, margin_top: 8 });
+    // ── Header with title + action buttons ────────────────────────────────
+    const headerBox = new St.BoxLayout({
+      margin_bottom: 16,
+      margin_top: 8,
+      x_expand: true,
+    });
 
     const titleLabel = new St.Label({
       text: "My Todos",
       style: "font-weight: bold; font-size: 24px; color: #ffffff;",
       y_align: Clutter.ActorAlign.CENTER,
-      x_expand: true, // Make title expand to push action buttons to the right edge
+      x_expand: true,
     });
     headerBox.add_child(titleLabel);
 
-    // ─── Drawer Header Action Buttons ───
-
-    // Copy active todos (Clipboard integration)
+    // Copy active todos button
     const copyActiveBtn = this._buildHeaderButton("edit-copy-symbolic");
     copyActiveBtn.connect("clicked", () => {
-      // Copy only active todos to clipboard and close drawer
-      copyToClipboard(service.getActiveTodos(), service.getCompletedTodos(), false);
-      this.close();
+      copyToClipboard(this._service.getActiveTodos(), this._service.getCompletedTodos(), false);
     });
+    setupTooltip(copyActiveBtn, "Copy Uncompleted Todos");
     headerBox.add_child(copyActiveBtn);
 
-    // Copy all todos
+    // Copy all todos button
     const copyAllBtn = this._buildHeaderButton("edit-paste-symbolic");
     copyAllBtn.connect("clicked", () => {
-      // Copy both active and completed todos to clipboard
-      copyToClipboard(service.getActiveTodos(), service.getCompletedTodos(), true);
-      this.close();
+      copyToClipboard(this._service.getActiveTodos(), this._service.getCompletedTodos(), true);
     });
+    setupTooltip(copyAllBtn, "Copy all Todos");
     headerBox.add_child(copyAllBtn);
 
-    // Settings gear
+    // Settings gear button
     const settingsBtn = this._buildHeaderButton("emblem-system-symbolic");
+    settingsBtn.accessible_name = "Open Preferences";
     settingsBtn.connect("clicked", () => {
-      // Open Adwaita preferences window and close drawer
-      extension.openPreferences();
+      this._extension.openPreferences();
       this.close();
     });
+    setupTooltip(settingsBtn, "Settings");
     headerBox.add_child(settingsBtn);
 
     this._actor.add_child(headerBox);
@@ -134,10 +145,55 @@ export class TodoDrawer {
       can_focus: true,
     });
     this.addBtn = new St.Button({
-      style_class: "todo-add-btn",
+      style_class: "todo-add-btn todo-add-btn-disabled",
       label: "+",
       can_focus: true,
     });
+
+    // Entry validation states (mirrors menu.ts behaviour)
+    let canAdd = false;
+    let addTooltipText = "Type a todo...";
+    setupTooltip(this.addBtn, () => addTooltipText);
+
+    this.entry.clutter_text.connect("text-changed", () => {
+      const text = this.entry.get_text().trim();
+      const todos = this._service.getTodos();
+
+      this.entry.remove_style_class_name("todo-entry-valid");
+      this.entry.remove_style_class_name("todo-entry-invalid");
+
+      if (!text) {
+        canAdd = false;
+        this.addBtn.add_style_class_name("todo-add-btn-disabled");
+        addTooltipText = "Type a todo...";
+        return;
+      }
+
+      if (todos.includes(text)) {
+        canAdd = false;
+        this.entry.add_style_class_name("todo-entry-invalid");
+        this.addBtn.add_style_class_name("todo-add-btn-disabled");
+        addTooltipText = "Todo already exists!";
+      } else {
+        canAdd = true;
+        this.entry.add_style_class_name("todo-entry-valid");
+        this.addBtn.remove_style_class_name("todo-add-btn-disabled");
+        addTooltipText = "Add todo";
+      }
+    });
+
+    this.entry.clutter_text.connect("activate", () => {
+      const text = this.entry.get_text().trim();
+      if (canAdd && this._service.add(text)) {
+        this.entry.set_text("");
+        this.entry.remove_style_class_name("todo-entry-valid");
+        this.entry.remove_style_class_name("todo-entry-invalid");
+        this.addBtn.add_style_class_name("todo-add-btn-disabled");
+        canAdd = false;
+        addTooltipText = "Type a todo...";
+      }
+    });
+
     entryBox.add_child(this.entry);
     entryBox.add_child(this.addBtn);
     this._actor.add_child(entryBox);
@@ -152,7 +208,7 @@ export class TodoDrawer {
     this._shield.connect("clicked", () => this.close());
   }
 
-  // ─── Component Builders ───────────────────────────────────────────────────
+  // ─── Header Button Builder ────────────────────────────────────────────────
 
   private _buildHeaderButton(iconName: string): St.Button {
     const btn = new St.Button({
@@ -160,7 +216,10 @@ export class TodoDrawer {
       y_align: Clutter.ActorAlign.CENTER,
       can_focus: true,
     });
-    btn.add_child(new St.Icon({ icon_name: iconName, style_class: "todo-header-icon" }));
+    btn.add_child(new St.Icon({
+      icon_name: iconName,
+      style_class: "todo-header-icon",
+    }));
     return btn;
   }
 

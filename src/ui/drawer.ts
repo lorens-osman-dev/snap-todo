@@ -2,20 +2,20 @@
  * ui/drawer.ts — Slide-in Drawer Surface
  *
  * Responsibility:
- *   - Render a Wayland-native slide-in drawer for the todo list
- *   - Manage open/close animations and the semi-transparent shield
- *   - Expose `itemContainer`, `entry`, and `addBtn` for the indicator to wire
- *   - Provide header action buttons (copy active, copy all, settings)
+ * - Render a Wayland-native slide-in drawer for the todo list
+ * - Manage open/close animations and the semi-transparent shield
+ * - Expose `itemContainer`, `completedContainer`, `entry`, and `addBtn` for the indicator to wire
+ * - Provide header action buttons (copy active, copy all, settings)
  *
  * Does NOT:
- *   - Manage todo data (that belongs to TodosService)
- *   - Know about the panel indicator
+ * - Manage todo data (that belongs to TodosService)
+ * - Know about the panel indicator
  *
  * Lifecycle:
- *   const drawer = new TodoDrawer(service, extension);
- *   drawer.open();
- *   drawer.close();
- *   drawer.destroy(); // always call in disable()
+ * const drawer = new TodoDrawer(service, extension);
+ * drawer.open();
+ * drawer.close();
+ * drawer.destroy(); // always call in disable()
  *
  * ── Keyboard navigation design note ──────────────────────────────────────────
  *
@@ -30,12 +30,12 @@
  * instead of querying the stage.
  *
  * Up/Down from todo rows: PopupBaseMenuItem does NOT stop bare arrow keys, so
- *   they naturally bubble up to _actor's key-press-event handler.
+ * they naturally bubble up to _actor's key-press-event handler.
  * Up/Down from St.Entry: the entry's ClutterText swallows arrow keys before
- *   they bubble, so we hook entry.clutter_text "key-press-event" separately.
+ * they bubble, so we hook entry.clutter_text "key-press-event" separately.
  * Tab / Shift+Tab: intercepted via captured-event on _actor (capture fires
- *   top-down before children, which is needed because Clutter handles Tab at
- *   the toolkit level and it may not appear in key-press-event on children).
+ * top-down before children, which is needed because Clutter handles Tab at
+ * the toolkit level and it may not appear in key-press-event on children).
  */
 declare const global: any;
 import Gio from "gi://Gio";
@@ -54,8 +54,11 @@ export class TodoDrawer {
 
   // ── Public surfaces (wired by the indicator / renderer) ──────────────────
 
-  /** Container for TodoItem widgets; rebuild its children on every refresh */
+  /** Container for active TodoItem widgets; rebuild its children on every refresh */
   public readonly itemContainer: St.BoxLayout;
+
+  /** Container for completed TodoItem widgets */
+  public readonly completedContainer: St.BoxLayout;
 
   /** Text input for adding new todos */
   public readonly entry: St.Entry;
@@ -71,9 +74,13 @@ export class TodoDrawer {
   private readonly _service: TodosService;
   private readonly _extension: Extension;
 
+  // ─── Collapsible Section Actors ───
+  private readonly _completedWrapper: St.BoxLayout;
+  private readonly _completedHeader: St.Button;
+
   /**
-   * Index of the currently logically-focused todo row (into
-   * itemContainer.get_children()). -1 = focus is in the entry/addBtn zone.
+   * Index of the currently logically-focused todo row (into the flattened visible array).
+   * -1 = focus is in the entry/addBtn zone.
    * Never derived from global.stage — always set by our own nav helpers.
    */
   private _focusedIndex = -1;
@@ -113,10 +120,10 @@ export class TodoDrawer {
       visible: false,
     });
 
-    // Header row
+    // ─── Header Row ───
     const headerBox = new St.BoxLayout({ margin_bottom: 16, margin_top: 8, x_expand: true });
     headerBox.add_child(new St.Label({
-      text: "My Todos",
+      text: "",
       style: "font-weight: bold; font-size: 24px; color: #ffffff;",
       y_align: Clutter.ActorAlign.CENTER,
       x_expand: true,
@@ -142,13 +149,64 @@ export class TodoDrawer {
 
     this._actor.add_child(headerBox);
 
-    // Scrollable list
+    // ─── Scrollable Lists ───
     const scrollView = new St.ScrollView({ x_expand: true, y_expand: true });
+
+    // Container that holds both the active items and the completed collapsible section
+    const listWrapper = new St.BoxLayout({ vertical: true, x_expand: true });
     this.itemContainer = new St.BoxLayout({ vertical: true, x_expand: true });
-    scrollView.add_child(this.itemContainer);
+    listWrapper.add_child(this.itemContainer);
+
+    // ─── Collapsible Completed Section ───
+    this._completedWrapper = new St.BoxLayout({ vertical: true, x_expand: true, visible: false, margin_top: 12 });
+    this.completedContainer = new St.BoxLayout({ vertical: true, x_expand: true, visible: false });
+
+    const completedHeaderBox = new St.BoxLayout({ x_expand: true, y_align: Clutter.ActorAlign.CENTER });
+    const completedIcon = new St.Icon({ icon_name: 'pan-end-symbolic', style_class: 'todo-header-icon' });
+    const completedLabel = new St.Label({
+      text: "Completed",
+      style: "font-weight: bold; font-size: 13px; color: #888888; margin-left: 6px;"
+    });
+
+    completedHeaderBox.add_child(completedIcon);
+    completedHeaderBox.add_child(completedLabel);
+
+    this._completedHeader = new St.Button({
+      style_class: "todo-drawer-completed-header",
+      x_expand: true,
+      can_focus: true,
+      toggle_mode: true,
+    });
+    this._completedHeader.add_child(completedHeaderBox);
+    // Explicitly handle programmatic focus highlights for Wayland
+    this._completedHeader.connect('key-focus-in', () => {
+      this._completedHeader.add_style_class_name('todo-drawer-completed-header-focused');
+    });
+    this._completedHeader.connect('key-focus-out', () => {
+      this._completedHeader.remove_style_class_name('todo-drawer-completed-header-focused');
+    });
+    // Toggle visibility of the completed items container
+    this._completedHeader.connect('clicked', () => {
+      const isExpanded = this._completedHeader.checked;
+      this.completedContainer.visible = isExpanded;
+      completedIcon.icon_name = isExpanded ? 'pan-down-symbolic' : 'pan-end-symbolic';
+
+      // Defer focus sync so Clutter's layout pass resolves the new visible children first
+      GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+        this._completedHeader.grab_key_focus();
+        this.syncFocusedItem(this._completedHeader);
+        return GLib.SOURCE_REMOVE;
+      }, null);
+    });
+
+    this._completedWrapper.add_child(this._completedHeader);
+    this._completedWrapper.add_child(this.completedContainer);
+    listWrapper.add_child(this._completedWrapper);
+
+    scrollView.add_child(listWrapper);
     this._actor.add_child(scrollView);
 
-    // Entry row
+    // ─── Entry Row ───
     const entryBox = new St.BoxLayout({ x_expand: true, margin_top: 16 });
     this.entry = new St.Entry({
       style_class: "todo-entry",
@@ -264,12 +322,13 @@ export class TodoDrawer {
     this.entry.clutter_text.connect("key-press-event", (_src: unknown, event: Clutter.Event) => {
       const kv = event.get_key_symbol();
       if (kv === Clutter.KEY_Up) {
-        const count = this.itemContainer.get_children().length;
-        if (count > 0) this._focusItem(count - 1);
+        const items = this._getVisibleItems();
+        if (items.length > 0) this._focusItem(items.length - 1);
         return Clutter.EVENT_STOP;
       }
       if (kv === Clutter.KEY_Down) {
-        if (this.itemContainer.get_children().length > 0) this._focusItem(0);
+        const items = this._getVisibleItems();
+        if (items.length > 0) this._focusItem(0);
         return Clutter.EVENT_STOP;
       }
       return Clutter.EVENT_PROPAGATE;
@@ -278,10 +337,36 @@ export class TodoDrawer {
 
   // ── Navigation helpers ────────────────────────────────────────────────────
 
+  /**
+     * Retrieves a flattened array of all dynamically visible items across
+     * both active and completed containers, injecting the header in between.
+     */
+  private _getVisibleItems(): Clutter.Actor[] {
+    const active = this.itemContainer.get_children();
+    const items: Clutter.Actor[] = [...active];
+
+    // Inject the header and completed items if the wrapper is visible
+    if (this._completedWrapper.visible) {
+      items.push(this._completedHeader);
+
+      // Only inject the children if the collapsible section is currently open
+      if (this.completedContainer.visible) {
+        items.push(...this.completedContainer.get_children());
+      }
+    }
+
+    return items;
+  }
+
   /** Central Up/Down handler — called from _actor's key-press-event. */
   private _onKeyPress(event: Clutter.Event): boolean {
     const kv = event.get_key_symbol();
-    const items = this.itemContainer.get_children();
+    const items = this._getVisibleItems();
+    // exit when ESC 
+    if (kv === Clutter.KEY_Escape) {
+      this.close();
+      return Clutter.EVENT_STOP;
+    }
 
     if (kv === Clutter.KEY_Up) {
       if (items.length === 0) return Clutter.EVENT_PROPAGATE;
@@ -309,9 +394,9 @@ export class TodoDrawer {
     return Clutter.EVENT_PROPAGATE;
   }
 
-  /** Highlight and focus a todo row by index. */
+  /** Highlight and focus a todo row by dynamic index. */
   private _focusItem(index: number): void {
-    const items = this.itemContainer.get_children();
+    const items = this._getVisibleItems();
     if (index < 0 || index >= items.length) return;
     this._clearItemHighlights();
     this._focusedIndex = index;
@@ -331,10 +416,10 @@ export class TodoDrawer {
 
   /**
    * Tab / Shift+Tab cycle:
-   *   item[0] → item[1] → … → item[n-1] → entry → addBtn → item[0]
+   * item[0] → item[1] → … → item[n-1] → entry → addBtn → item[0]
    */
   private _navigateTab(backward: boolean): void {
-    const items = this.itemContainer.get_children();
+    const items = this._getVisibleItems();
     const total = items.length + 2; // items + entry + addBtn
 
     // Determine current position in the chain
@@ -368,12 +453,19 @@ export class TodoDrawer {
 
   /** Remove active/hover highlight from every todo row. */
   private _clearItemHighlights(): void {
-    this.itemContainer.get_children().forEach(c => {
+    this._getVisibleItems().forEach(c => {
       if ((c as any).active !== undefined) (c as any).active = false;
     });
   }
 
   // ── Public API (called by TodoListRenderer) ───────────────────────────────
+
+  /**
+   * Called to show/hide the entire completed section based on preferences and item counts.
+   */
+  public updateCompletedVisibility(count: number, showCompleted: boolean): void {
+    this._completedWrapper.visible = showCompleted && count > 0;
+  }
 
   /**
    * Reset our focus tracking after a full list rebuild.
@@ -387,12 +479,16 @@ export class TodoDrawer {
 
   /**
    * After the renderer restores focus to a specific item via service.nextFocusText,
-   * call this so our index stays in sync with what the renderer focused.
-   * `index` is the position of the item in itemContainer after the rebuild.
+   * call this so our index stays in sync. By passing the actual Actor reference,
+   * the Drawer can resolve its position natively within the flattened visible list.
    */
-  public syncFocusedIndex(index: number): void {
-    this._focusedIndex = index;
-    this._entryFocused = false;
+  public syncFocusedItem(item: Clutter.Actor): void {
+    const items = this._getVisibleItems();
+    const idx = items.indexOf(item);
+    if (idx !== -1) {
+      this._focusedIndex = idx;
+      this._entryFocused = false;
+    }
   }
 
   // ── Theme ─────────────────────────────────────────────────────────────────
@@ -469,6 +565,7 @@ export class TodoDrawer {
   get isOpen(): boolean { return this._isOpen; }
 
   destroy(): void {
+    // CLEANUP: Unbind desktop interface observer
     if (this._themeChangedId) {
       this._desktopSettings.disconnect(this._themeChangedId);
       this._themeChangedId = 0;

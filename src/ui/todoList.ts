@@ -2,20 +2,20 @@
  * ui/todoList.ts — List Renderer
  *
  * Responsibility:
- *   - Turn the data arrays from TodosService into Clutter actors
- *   - Wire TodoItem signals directly to the service
- *   - Restore keyboard focus after every rebuild (consuming service focus-intent)
- *   - Route items to the correct container (menu section, completed submenu, drawer)
+ * - Turn the data arrays from TodosService into Clutter actors
+ * - Wire TodoItem signals directly to the service
+ * - Restore keyboard focus after every rebuild (consuming service focus-intent)
+ * - Route items to the correct container (menu section, completed submenu, drawer)
  *
  * Does NOT:
- *   - Know about the panel button or its label
- *   - Manage the menu structure (headers, separators, entry row)
- *   - Own any persistent actors — it only populates containers it receives
+ * - Know about the panel button or its label
+ * - Manage the menu structure (headers, separators, entry row)
+ * - Own any persistent actors — it only populates containers it receives
  *
  * Usage:
- *   const renderer = new TodoListRenderer(service, settings);
- *   renderer.render(todoSection, completedSubMenu, drawer);
- *   // Call render() again whenever data changes.
+ * const renderer = new TodoListRenderer(service, settings);
+ * renderer.render(todoSection, completedSubMenu, drawer);
+ * // Call render() again whenever data changes.
  */
 
 import GLib from "gi://GLib";
@@ -56,9 +56,12 @@ export class TodoListRenderer {
     // ── 1. Clear ────────────────────────────────────────────────────────────
     todoSection.removeAll();
     completedSubMenu.menu.removeAll();
-    if (drawer?.itemContainer) drawer.itemContainer.destroy_all_children();
-    // Reset drawer focus-index tracking; stale indices from prior render must not persist.
-    if (drawer) drawer.resetFocusState();
+    if (drawer) {
+      drawer.itemContainer.destroy_all_children();
+      drawer.completedContainer.destroy_all_children();
+      // Reset drawer focus-index tracking; stale indices from prior render must not persist.
+      drawer.resetFocusState();
+    }
 
     // ── 2. Fetch state snapshot ─────────────────────────────────────────────
     const { todos, completed, pinned } = this._service.snapshot();
@@ -101,7 +104,11 @@ export class TodoListRenderer {
 
       // Route to the correct container
       if (useDrawer && drawer) {
-        drawer.itemContainer.add_child(item);
+        if (isDone) {
+          drawer.completedContainer.add_child(item);
+        } else {
+          drawer.itemContainer.add_child(item);
+        }
       } else if (isDone) {
         completedSubMenu.menu.addMenuItem(item);
       } else {
@@ -114,13 +121,15 @@ export class TodoListRenderer {
       }
     }
 
+    // Update Drawer Completed Header Visibility
+    if (drawer) {
+      const drawerCompletedCount = drawer.completedContainer.get_n_children();
+      drawer.updateCompletedVisibility(drawerCompletedCount, showCompleted);
+    }
+
     // ── 5. Restore focus ────────────────────────────────────────────────────
     if (itemToFocus) {
       const highlight = this._service.keepHighlight;
-      // Find this item's index so the drawer can sync its _focusedIndex.
-      const focusIdx = useDrawer && drawer
-        ? drawer.itemContainer.get_children().indexOf(itemToFocus as any)
-        : -1;
 
       // Defer to the next main-loop iteration so Clutter finishes layout first
       GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
@@ -130,10 +139,9 @@ export class TodoListRenderer {
           if (highlight) {
             itemToFocus.add_style_class_name("todo-item-modifier-held");
           }
-          // Sync the drawer's internal focus index so Up/Down work correctly
-          // after a reorder or toggle restores focus to a specific row.
-          if (useDrawer && drawer && focusIdx !== -1) {
-            drawer.syncFocusedIndex(focusIdx);
+          // Sync the drawer's internal focus index using the target Actor
+          if (useDrawer && drawer) {
+            drawer.syncFocusedItem(itemToFocus);
           }
         }
         return GLib.SOURCE_REMOVE;

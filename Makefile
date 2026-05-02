@@ -21,8 +21,11 @@ build: node_modules $(DIST)/extension.js $(DIST)/prefs.js
 node_modules:
 	npm install --legacy-peer-deps
 
-# We still trigger on these top-level files, but tsc will compile the whole project
-$(DIST)/extension.js $(DIST)/prefs.js: src/extension.ts src/prefs.ts tsconfig.json
+# Find all TypeScript files in the src directory recursively
+TS_SOURCES := $(shell find src -type f -name '*.ts')
+
+# We trigger on ANY TypeScript file change, letting tsc compile the whole project
+$(DIST)/extension.js $(DIST)/prefs.js: $(TS_SOURCES) tsconfig.json
 	$(TSC)
 
 # ── Schema ────────────────────────────────────────────────────────────────────

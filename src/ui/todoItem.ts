@@ -18,7 +18,7 @@
  *   "todo-move-step" (text: string, direction: int, keepHighlight: bool)
  *   "todo-pin"       (text: string)
  */
-
+declare const global: any;
 import GObject from "gi://GObject";
 import St from "gi://St";
 import Gio from "gi://Gio";

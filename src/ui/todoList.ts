@@ -57,6 +57,8 @@ export class TodoListRenderer {
     todoSection.removeAll();
     completedSubMenu.menu.removeAll();
     if (drawer?.itemContainer) drawer.itemContainer.destroy_all_children();
+    // Reset drawer focus-index tracking; stale indices from prior render must not persist.
+    if (drawer) drawer.resetFocusState();
 
     // ── 2. Fetch state snapshot ─────────────────────────────────────────────
     const { todos, completed, pinned } = this._service.snapshot();
@@ -115,6 +117,10 @@ export class TodoListRenderer {
     // ── 5. Restore focus ────────────────────────────────────────────────────
     if (itemToFocus) {
       const highlight = this._service.keepHighlight;
+      // Find this item's index so the drawer can sync its _focusedIndex.
+      const focusIdx = useDrawer && drawer
+        ? drawer.itemContainer.get_children().indexOf(itemToFocus as any)
+        : -1;
 
       // Defer to the next main-loop iteration so Clutter finishes layout first
       GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
@@ -123,6 +129,11 @@ export class TodoListRenderer {
           itemToFocus.grab_key_focus();
           if (highlight) {
             itemToFocus.add_style_class_name("todo-item-modifier-held");
+          }
+          // Sync the drawer's internal focus index so Up/Down work correctly
+          // after a reorder or toggle restores focus to a specific row.
+          if (useDrawer && drawer && focusIdx !== -1) {
+            drawer.syncFocusedIndex(focusIdx);
           }
         }
         return GLib.SOURCE_REMOVE;

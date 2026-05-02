@@ -7,7 +7,7 @@
     "build": "make build",
     "pack": "make pack",
     "install": "make install",
-    "test": "make test",
+    "test": "make clean && make test",
     "clean": "make clean"
   },
   "devDependencies": {

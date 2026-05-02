@@ -535,7 +535,36 @@ const LightTodoIndicator = GObject.registerClass(
       menu.addMenuItem(this._headerItem);
 
       this._todoSection = new PopupMenu.PopupMenuSection();
-      menu.addMenuItem(this._todoSection);
+
+      // 1. Create a dedicated ScrollView just for the active todos
+      const activeScrollView = new St.ScrollView({
+        style_class: 'vfade', // Adds GNOME's native top/bottom scroll fading effect
+        hscrollbar_policy: St.PolicyType.NEVER,
+        vscrollbar_policy: St.PolicyType.AUTOMATIC,
+        x_expand: true,
+        y_expand: true,
+      });
+
+      // 2. Restrict the height so the menu doesn't grow infinitely 
+      // (You can adjust 350px to whatever feels best on your monitor)
+      activeScrollView.set_style("max-height: 350px;");
+
+      // 3. Mount the section's internal layout into the scroll view
+      activeScrollView.add_child(this._todoSection.actor);
+
+      // 4. Wrap the ScrollView in a non-interactive menu item so it integrates perfectly
+      const scrollWrapperItem = new PopupMenu.PopupBaseMenuItem({
+        reactive: false,
+        can_focus: false,
+        hover: false
+      });
+
+      // Remove padding so the list stays flush with the edges
+      scrollWrapperItem.set_style("padding: 0; margin: 0;");
+      scrollWrapperItem.add_child(activeScrollView);
+
+      // 5. Add the wrapper to the master menu
+      menu.addMenuItem(scrollWrapperItem);
 
       this._completedSubMenu = new PopupMenu.PopupSubMenuMenuItem("Completed");
       menu.addMenuItem(this._completedSubMenu);

@@ -572,6 +572,21 @@ const LightTodoIndicator = GObject.registerClass(
       menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
       const entryItem = new PopupMenu.PopupBaseMenuItem({ activate: false });
+
+      //Intercept arrow-key navigation and push focus into the text input
+      entryItem.connect('notify::active', () => {
+        if (entryItem.active) {
+          // Defer to the main loop to ensure the menu's internal focus manager 
+          // has finished its cycle before we hijack the focus.
+          GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+            if (this._entry && this._entry.is_mapped()) {
+              this._entry.grab_key_focus();
+            }
+            return GLib.SOURCE_REMOVE;
+          }, null);
+        }
+      });
+
       this._entry = new St.Entry({ style_class: "todo-entry", hint_text: "Add a todo…", x_expand: true, can_focus: true });
 
       // CREATE BUTTON FIRST so it can be updated inside the listener

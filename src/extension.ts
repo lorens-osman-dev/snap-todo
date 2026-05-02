@@ -398,6 +398,8 @@ const LightTodoIndicator = GObject.registerClass(
     private _headerLabel!: St.Label;
     private _entry!: St.Entry;
     private _panelLabel!: St.Label;
+    private _desktopSettings: Gio.Settings;
+    private _themeChangedId: number = 0;
 
     // NEW: Keep a reference to the inner box
     private _panelBox!: St.BoxLayout;
@@ -441,6 +443,17 @@ const LightTodoIndicator = GObject.registerClass(
 
         // Let standard left-clicks pass through to open the todo list
         return Clutter.EVENT_PROPAGATE;
+      });
+
+      // Listen to the global GNOME desktop theme settings
+      this._desktopSettings = new Gio.Settings({ schema_id: "org.gnome.desktop.interface" });
+
+      // Apply the theme immediately on load
+      this._updateThemeClass();
+
+      // Re-apply if the user flips the dark mode switch in GNOME Quick Settings
+      this._themeChangedId = this._desktopSettings.connect("changed::color-scheme", () => {
+        this._updateThemeClass();
       });
     }
 
@@ -976,6 +989,21 @@ const LightTodoIndicator = GObject.registerClass(
 
       // Close the menu so the user knows the action was completed
       this.menu.close();
+    }
+
+    private _updateThemeClass(): void {
+      const colorScheme = this._desktopSettings.get_string("color-scheme");
+
+      // Explicitly cast the generic actor to St.Widget to satisfy TypeScript
+      const menuActor = this.menu.actor as unknown as St.Widget;
+
+      if (colorScheme === "prefer-dark") {
+        menuActor.add_style_class_name("todo-dark-theme");
+        menuActor.remove_style_class_name("todo-light-theme");
+      } else {
+        menuActor.add_style_class_name("todo-light-theme");
+        menuActor.remove_style_class_name("todo-dark-theme");
+      }
     }
 
     override destroy(): void {

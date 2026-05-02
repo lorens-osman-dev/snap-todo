@@ -119,27 +119,23 @@
 /* Styling for the new Icon child element */
 .todo-check-icon {
   icon-size: 16px;
-  color: rgba(255, 255, 255, 0.8); /* Standard sharp symbolic icon color */
 }
 
-/* Simplified button container, now just handling sizing and interaction */
+/* Simplified button container */
 .todo-check-btn {
-  width: 24px; /* A slightly larger container button is often easier to click */
+  width: 24px;
   height: 24px;
   padding: 0;
   background-color: transparent;
   border: none;
-  border-radius: 6px; /* Gentle corner rounding for hover feedback */
+  border-radius: 6px;
 }
 
-/* Clean hover feedback */
-.todo-check-btn:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-}
+
 
 /* Optional: Keep accent blue for the checked icon state, which is more elegant */
 .todo-checked .todo-check-icon {
-  color: #4a90d9;
+  color: #888888;
 }
 
 /* ── Edit button ──────────────────────────────────────────── */
@@ -152,11 +148,6 @@
   background-color: transparent;
   color: #888888;
   border: none;
-}
-
-.todo-edit-btn:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  color: #cccccc;
 }
 
 .todo-edit-icon {
@@ -185,7 +176,7 @@
 }
 
 .todo-drag-btn:hover {
-  color: #aaaaaa;
+  color: rgb(72, 144, 217);
   cursor: pointer;
 }
 
@@ -195,7 +186,8 @@
 
 /* The floating actor that follows the mouse pointer */
 .todo-drag-actor {
-  background-color: #2d2d2d;
+  background-color: rgba(128, 128, 128, 0.9);
+  color: #ffffff;
   padding: 4px 12px;
   border-radius: 6px;
   border: 1px solid #4a90d9;
@@ -212,11 +204,6 @@
   background-color: transparent;
   color: #888888;
   border: none;
-}
-
-.todo-pin-btn:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  color: #cccccc;
 }
 
 .todo-pin-icon {
@@ -241,14 +228,20 @@
 
 /* 1. Neutral State (Empty) */
 .todo-entry:focus {
-  border-color:  rgb(72, 144, 217);;
-   box-shadow: inset 0 0 0 2px rgb(72, 144, 217); 
-   background-color: rgb(46, 53, 56);
+  border-color: #4890d9;
+  box-shadow: inset 0 0 0 2px #4890d9; 
+}
+
+.todo-dark-theme .todo-entry:focus {
+  background-color: rgb(46, 53, 56);
+}
+
+.todo-light-theme .todo-entry:focus {
+  background-color: rgb(227, 227, 227);
 }
 
 /* 2. Valid State (Allowed to add) */
 .todo-entry-valid {
-  background-color: rgba(46, 194, 126, 0.15);
   border: 1px solid #2ec27e;
 }
 
@@ -257,29 +250,45 @@
   box-shadow: inset 0 0 0 2px #2ec27e;
 }
 
+.todo-dark-theme .todo-entry-valid:focus {
+  background-color: rgba(46, 194, 126, 0.15);
+}
+
+.todo-light-theme .todo-entry-valid:focus {
+  background-color: rgba(46, 194, 126, 0.25);
+}
+
 /* 3. Invalid State (Duplicated) */
 .todo-entry-invalid {
-  background-color: rgb(29, 29, 29);
-  border: 1px solid rgb(239, 134, 97);
+  border: 1px solid #ef8661;
 }
 
 .todo-entry-invalid:focus {
-  border-color: rgb(239, 134, 97);
-  box-shadow: inset 0 0 0 2px rgb(239, 134, 97);
+  border-color: #ef8661;
+  box-shadow: inset 0 0 0 2px #ef8661;
+}
+
+
+.todo-dark-theme .todo-entry-invalid:focus {
+  background-color: rgba(239, 134, 97, 0.15);
+}
+
+.todo-light-theme .todo-entry-invalid:focus {
+  background-color: rgba(239, 134, 97, 0.25);
 }
 
 /* ── Disabled Add Button ──────────────────────────────────── */
 
 .todo-add-btn-disabled {
-  background-color: #383838;
-  color: #888888;
+  background-color: rgba(128, 128, 128, 0.2);
+  color: rgba(128, 128, 128, 0.6);
   border-color: transparent;
 }
 
 /* Prevent hover styling when disabled */
 .todo-add-btn-disabled:hover,
 .todo-add-btn-disabled:active {
-  background-color: #383838;
+  background-color: rgba(128, 128, 128, 0.2);
 }
 
 /* ── Hidden Indicator State ───────────────────────────────── */
@@ -304,11 +313,6 @@
   border: none;
 }
 
-.todo-header-btn:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  color: #cccccc;
-}
-
 .todo-header-icon {
   icon-size: 14px;
 }
@@ -324,4 +328,27 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   text-align: center;
+}
+
+
+
+/* Base button styles (removed hardcoded light colors) */
+.todo-edit-btn,
+.todo-pin-btn,
+.todo-header-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 4px;
+  background-color: transparent;
+  color: #888888; /* Mid-grey works on both */
+  border: none;
+}
+
+/* Universal hover: darkens light themes, lightens dark themes */
+.todo-check-btn:hover,
+.todo-edit-btn:hover,
+.todo-pin-btn:hover,
+.todo-header-btn:hover {
+  background-color: rgba(128, 128, 128, 0.15); 
 }

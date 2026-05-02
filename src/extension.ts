@@ -46,7 +46,7 @@ export default class LightTodoExtension extends Extension {
     try {
       this._settings = this.getSettings() as unknown as Gio.Settings;
       this._service = new TodosService(this._settings);
-      this._drawer = new TodoDrawer();
+      this._drawer = new TodoDrawer(this._service, this);
       this._indicator = new LightTodoIndicator(
         this._settings,
         this._service,

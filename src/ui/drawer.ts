@@ -2,26 +2,30 @@
  * ui/drawer.ts — Slide-in Drawer Surface
  *
  * Responsibility:
- *   - Render a Wayland-native slide-in drawer for the todo list
- *   - Manage open/close animations and the semi-transparent shield
- *   - Expose `itemContainer`, `entry`, and `addBtn` for the indicator to wire
+ * - Render a Wayland-native slide-in drawer for the todo list
+ * - Manage open/close animations and the semi-transparent shield
+ * - Expose `itemContainer`, `entry`, and `addBtn` for the indicator to wire
  *
  * Does NOT:
- *   - Manage todo data (that belongs to TodosService)
- *   - Know about the panel indicator
+ * - Manage todo data (that belongs to TodosService)
+ * - Know about the panel indicator
  *
  * Lifecycle:
- *   const drawer = new TodoDrawer();
- *   // … wire signals to indicator …
- *   drawer.open();
- *   drawer.close();
- *   drawer.destroy(); // always call in disable()
+ * const drawer = new TodoDrawer(service, extension);
+ * // … wire signals to indicator …
+ * drawer.open();
+ * drawer.close();
+ * drawer.destroy(); // always call in disable()
  */
 
 import St from "gi://St";
 import GLib from "gi://GLib";
 import Clutter from "gi://Clutter";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
+import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
+import { TodosService } from "../services/todosService.js";
+import { copyToClipboard } from "../services/clipboard.js";
+import { setupTooltip } from "../utils/tooltip.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -54,7 +58,7 @@ export class TodoDrawer {
 
   // ─── Constructor ──────────────────────────────────────────────────────────
 
-  constructor() {
+  constructor(service: TodosService, extension: Extension) {
     // ── Shield (full-screen backdrop) ──────────────────────────────────────
     this._shield = new St.Button({
       style_class: "todo-drawer-shield",
@@ -75,11 +79,44 @@ export class TodoDrawer {
 
     // ── Header ────────────────────────────────────────────────────────────
     const headerBox = new St.BoxLayout({ margin_bottom: 16, margin_top: 8 });
-    headerBox.add_child(new St.Label({
+
+    const titleLabel = new St.Label({
       text: "My Todos",
       style: "font-weight: bold; font-size: 24px; color: #ffffff;",
       y_align: Clutter.ActorAlign.CENTER,
-    }));
+      x_expand: true, // Make title expand to push action buttons to the right edge
+    });
+    headerBox.add_child(titleLabel);
+
+    // ─── Drawer Header Action Buttons ───
+
+    // Copy active todos (Clipboard integration)
+    const copyActiveBtn = this._buildHeaderButton("edit-copy-symbolic");
+    copyActiveBtn.connect("clicked", () => {
+      // Copy only active todos to clipboard and close drawer
+      copyToClipboard(service.getActiveTodos(), service.getCompletedTodos(), false);
+      this.close();
+    });
+    headerBox.add_child(copyActiveBtn);
+
+    // Copy all todos
+    const copyAllBtn = this._buildHeaderButton("edit-paste-symbolic");
+    copyAllBtn.connect("clicked", () => {
+      // Copy both active and completed todos to clipboard
+      copyToClipboard(service.getActiveTodos(), service.getCompletedTodos(), true);
+      this.close();
+    });
+    headerBox.add_child(copyAllBtn);
+
+    // Settings gear
+    const settingsBtn = this._buildHeaderButton("emblem-system-symbolic");
+    settingsBtn.connect("clicked", () => {
+      // Open Adwaita preferences window and close drawer
+      extension.openPreferences();
+      this.close();
+    });
+    headerBox.add_child(settingsBtn);
+
     this._actor.add_child(headerBox);
 
     // ── Scrollable list ────────────────────────────────────────────────────
@@ -113,6 +150,18 @@ export class TodoDrawer {
     this._updateGeometry();
     Main.layoutManager.connect("monitors-changed", () => this._updateGeometry());
     this._shield.connect("clicked", () => this.close());
+  }
+
+  // ─── Component Builders ───────────────────────────────────────────────────
+
+  private _buildHeaderButton(iconName: string): St.Button {
+    const btn = new St.Button({
+      style_class: "todo-header-btn",
+      y_align: Clutter.ActorAlign.CENTER,
+      can_focus: true,
+    });
+    btn.add_child(new St.Icon({ icon_name: iconName, style_class: "todo-header-icon" }));
+    return btn;
   }
 
   // ─── Geometry ─────────────────────────────────────────────────────────────

@@ -71,10 +71,11 @@ export default class LightTodoExtension extends Extension {
         Meta.KeyBindingFlags.NONE,
         Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
         () => {
-          if (this._indicator?.menu) {
-            this._indicator.menu.toggle();
+          if (this._indicator) {
+            // Use the new routing method instead of hardcoding menu.toggle()
+            this._indicator.toggleUI();
           }
-        },
+        }
       );
 
       Logger.info("enabled");

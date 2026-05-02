@@ -153,6 +153,20 @@ export const LightTodoIndicator = GObject.registerClass(
       this._todoMenu.refresh(activeCount, completedCount);
     }
 
+    public toggleUI(): void {
+      if (this._service.getUseDrawer()) {
+        // Close the panel menu if it happens to be open
+        if ((this.menu as any).isOpen) {
+          this.menu.close();
+        }
+        this._drawer?.toggle();
+      } else {
+        // Close the drawer if it happens to be open
+        this._drawer?.close();
+        this.menu.toggle();
+      }
+    }
+
     // ─── Lifecycle / Cleanup ──────────────────────────────────────────────────
 
     override destroy(): void {

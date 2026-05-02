@@ -21,6 +21,7 @@ build: node_modules $(DIST)/extension.js $(DIST)/prefs.js
 node_modules:
 	npm install --legacy-peer-deps
 
+# We still trigger on these top-level files, but tsc will compile the whole project
 $(DIST)/extension.js $(DIST)/prefs.js: src/extension.ts src/prefs.ts tsconfig.json
 	$(TSC)
 
@@ -37,7 +38,8 @@ schemas/gschemas.compiled: schemas/org.gnome.shell.extensions.light-todo.gschema
 .PHONY: install
 install: build schema
 	mkdir -p $(INSTALL)
-	cp -r $(DIST)/*.js    $(INSTALL)/
+	# Recursively copy all files AND subdirectories from dist/
+	cp -r $(DIST)/* $(INSTALL)/
 	cp    metadata.json   $(INSTALL)/
 	cp    stylesheet.css  $(INSTALL)/
 	mkdir -p $(INSTALL)/schemas
@@ -54,14 +56,14 @@ install: build schema
 pack: build schema
 	rm -f $(UUID).zip
 	mkdir -p _pack
-	cp $(DIST)/*.js   _pack/
+	# Recursively copy all files AND subdirectories for the zip as well
+	cp -r $(DIST)/* _pack/
 	cp metadata.json  _pack/
 	cp stylesheet.css _pack/
 	cp -r schemas     _pack/
 	cd _pack && zip -r ../$(UUID).zip .
 	rm -rf _pack
 	@echo "📦  Created $(UUID).zip"
-
 # ── Test (nested Wayland session) ────────────────────────────────────────────
 #
 # GNOME 49+: uses --devkit

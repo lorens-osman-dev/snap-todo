@@ -44,12 +44,12 @@ export const LightTodoIndicator = GObject.registerClass(
       this._service = new TodosService(settings);
       this._renderer = new TodoListRenderer(this._service, this._settings);
 
-      this._drawer = new TodoDrawer();
+      // Pass the service to the drawer so it can handle its own clipboard logic
+      this._drawer = new TodoDrawer(this._service);
 
       this._buildPanel();
       this._buildMenu(extension);
 
-      // Connect drawer bindings
       this._drawer.addBtn.connect("clicked", () => {
         if (this._service.addTodo(this._drawer!.entry.get_text().trim())) {
           this._drawer!.entry.set_text("");
@@ -61,7 +61,6 @@ export const LightTodoIndicator = GObject.registerClass(
         }
       });
 
-      // Settings and visibility
       this._updateVisibility();
       this._settings.connect("changed::show-indicator", () => this._updateVisibility());
       this._settingsChangedId = this._settings.connect("changed", () => this._refresh());
@@ -86,7 +85,7 @@ export const LightTodoIndicator = GObject.registerClass(
       this._themeChangedId = this._desktopSettings.connect("changed::color-scheme", () => this._updateThemeClass());
 
       Main.overview.connect('showing', () => this._drawer?.close());
-      this._refresh(); // Initial draw
+      this._refresh();
     }
 
     private _buildPanel(): void {
@@ -107,15 +106,64 @@ export const LightTodoIndicator = GObject.registerClass(
       }
     }
 
+    // NEW: Wayland-native Clipboard implementation routed through TodosService
+    private _copyToClipboard(all: boolean): void {
+      const todos = this._service.getTodos();
+      const completed = this._service.getCompleted();
+
+      const activeTodos = todos.filter(t => !completed.includes(t));
+      const completedTodos = todos.filter(t => completed.includes(t));
+
+      let lines: string[] = [];
+
+      if (!all) {
+        if (activeTodos.length === 0) return;
+        lines.push("# Todos:");
+        activeTodos.forEach(t => lines.push(`- [ ] ${t}`));
+      } else {
+        if (todos.length === 0) return;
+
+        if (activeTodos.length > 0) {
+          lines.push("# Todos:");
+          activeTodos.forEach(t => lines.push(`- [ ] ${t}`));
+        }
+        if (completedTodos.length > 0) {
+          lines.push("# Completed Todos:");
+          completedTodos.forEach(t => lines.push(`- [x] ${t}`));
+        }
+      }
+
+      const text = lines.join("\n");
+      St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, text);
+
+      const count = all ? todos.length : activeTodos.length;
+      Main.notify("Light Todo", `Copied ${count} item(s) to clipboard`);
+
+      this.menu.close();
+    }
+
     private _buildMenu(extension: Extension): void {
       const menu = this.menu as PopupMenu.PopupMenu;
       const headerItem = new PopupMenu.PopupBaseMenuItem({ activate: false, hover: false });
 
       this._headerLabel = new St.Label({ text: "Todos", x_expand: true, y_align: Clutter.ActorAlign.CENTER, style: "font-weight: bold; color: #888888; font-size: 12px; margin-left: 6px;" });
 
-      const copyBtn = new St.Button({ style_class: "todo-header-btn", y_align: Clutter.ActorAlign.CENTER });
-      copyBtn.add_child(new St.Icon({ icon_name: "edit-copy-symbolic", style_class: "todo-header-icon" }));
-      setupTooltip(copyBtn, "Copy Uncompleted Todos");
+      const copyActiveBtn = new St.Button({ style_class: "todo-header-btn", y_align: Clutter.ActorAlign.CENTER });
+      copyActiveBtn.add_child(new St.Icon({ icon_name: "edit-copy-symbolic", style_class: "todo-header-icon" }));
+      copyActiveBtn.connect("clicked", () => this._copyToClipboard(false));
+      setupTooltip(copyActiveBtn, "Copy Uncompleted Todos");
+
+      const copyAllBtn = new St.Button({
+        style_class: "todo-header-btn",
+        y_align: Clutter.ActorAlign.CENTER,
+        can_focus: true,
+      });
+      copyAllBtn.add_child(new St.Icon({
+        icon_name: "edit-paste-symbolic",
+        style_class: "todo-header-icon"
+      }));
+      copyAllBtn.connect("clicked", () => this._copyToClipboard(true));
+      setupTooltip(copyAllBtn, "Copy all Todos");
 
       const settingsBtn = new St.Button({ style_class: "todo-header-btn", y_align: Clutter.ActorAlign.CENTER });
       settingsBtn.add_child(new St.Icon({ icon_name: "emblem-system-symbolic", style_class: "todo-header-icon" }));
@@ -123,7 +171,8 @@ export const LightTodoIndicator = GObject.registerClass(
       setupTooltip(settingsBtn, "Settings");
 
       headerItem.add_child(this._headerLabel);
-      headerItem.add_child(copyBtn);
+      headerItem.add_child(copyActiveBtn);
+      headerItem.add_child(copyAllBtn);
       headerItem.add_child(settingsBtn);
       menu.addMenuItem(headerItem);
 
@@ -208,6 +257,7 @@ export const LightTodoIndicator = GObject.registerClass(
           if (open) GLib.idle_add(GLib.PRIORITY_DEFAULT, () => { this._entry.grab_key_focus(); return false; }, null);
         });
     }
+
     private _refresh(): void {
       const todos = this._service.getTodos();
       const completed = this._service.getCompleted();

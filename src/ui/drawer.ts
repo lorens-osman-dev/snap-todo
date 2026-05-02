@@ -3,11 +3,16 @@
  *
  * Responsibility: Manages the full-height side panel Wayland UI.
  */
+/**
+ * ui/drawer.ts
+ */
 
 import St from "gi://St";
 import Clutter from "gi://Clutter";
 import GLib from "gi://GLib";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
+import { setupTooltip } from "../utils/tooltip.js";
+import { TodosService } from "../services/todosService.js";
 
 export class TodoDrawer {
   public actor: St.BoxLayout;
@@ -18,8 +23,11 @@ export class TodoDrawer {
   private _shield: St.Button;
   private _isOpen: boolean = false;
   private _drawerWidth: number = 400;
+  private _service: TodosService;
 
-  constructor() {
+  constructor(service: TodosService) {
+    this._service = service;
+
     this._shield = new St.Button({
       style_class: "todo-drawer-shield",
       reactive: true,
@@ -36,13 +44,29 @@ export class TodoDrawer {
       visible: false,
     });
 
+    // ── Drawer Header with Copy Buttons ──
     const headerBox = new St.BoxLayout({ margin_bottom: 16, margin_top: 8 });
     const headerLabel = new St.Label({
       text: "My Todos",
       style: "font-weight: bold; font-size: 24px; color: #ffffff;",
-      y_align: Clutter.ActorAlign.CENTER
+      y_align: Clutter.ActorAlign.CENTER,
+      x_expand: true // Pushes the copy buttons to the far right
     });
     headerBox.add_child(headerLabel);
+
+    const copyActiveBtn = new St.Button({ style_class: "todo-header-btn", y_align: Clutter.ActorAlign.CENTER });
+    copyActiveBtn.add_child(new St.Icon({ icon_name: "edit-copy-symbolic", style_class: "todo-header-icon" }));
+    copyActiveBtn.connect("clicked", () => this._copyToClipboard(false));
+    setupTooltip(copyActiveBtn, "Copy Uncompleted Todos");
+
+    const copyAllBtn = new St.Button({ style_class: "todo-header-btn", y_align: Clutter.ActorAlign.CENTER });
+    copyAllBtn.add_child(new St.Icon({ icon_name: "edit-paste-symbolic", style_class: "todo-header-icon" }));
+    copyAllBtn.connect("clicked", () => this._copyToClipboard(true));
+    setupTooltip(copyAllBtn, "Copy all Todos");
+
+    headerBox.add_child(copyActiveBtn);
+    headerBox.add_child(copyAllBtn);
+
     this.actor.add_child(headerBox);
 
     const scrollView = new St.ScrollView({
@@ -75,6 +99,41 @@ export class TodoDrawer {
     this._updateGeometry();
     Main.layoutManager.connect("monitors-changed", () => this._updateGeometry());
     this._shield.connect("clicked", () => this.close());
+  }
+
+  // Same Wayland clipboard implementation decoupled via TodosService
+  private _copyToClipboard(all: boolean): void {
+    const todos = this._service.getTodos();
+    const completed = this._service.getCompleted();
+
+    const activeTodos = todos.filter(t => !completed.includes(t));
+    const completedTodos = todos.filter(t => completed.includes(t));
+
+    let lines: string[] = [];
+
+    if (!all) {
+      if (activeTodos.length === 0) return;
+      lines.push("# Todos:");
+      activeTodos.forEach(t => lines.push(`- [ ] ${t}`));
+    } else {
+      if (todos.length === 0) return;
+      if (activeTodos.length > 0) {
+        lines.push("# Todos:");
+        activeTodos.forEach(t => lines.push(`- [ ] ${t}`));
+      }
+      if (completedTodos.length > 0) {
+        lines.push("# Completed Todos:");
+        completedTodos.forEach(t => lines.push(`- [x] ${t}`));
+      }
+    }
+
+    const text = lines.join("\n");
+    St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, text);
+
+    const count = all ? todos.length : activeTodos.length;
+    Main.notify("Light Todo", `Copied ${count} item(s) to clipboard`);
+
+    this.close(); // Automatically dismiss the drawer after a successful copy
   }
 
   private _updateGeometry(): void {

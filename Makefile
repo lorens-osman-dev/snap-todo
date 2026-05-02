@@ -76,12 +76,20 @@ test: install
 	@echo "    Inside the new window, run:"
 	@echo "    gnome-extensions enable $(UUID)"
 	@echo ""
-	MUTTER_DEBUG_DUMMY_MODE_SPECS="1280x720" dbus-run-session gnome-shell --nested --wayland
+	MUTTER_DEBUG_DUMMY_MODE_SPECS="1280x720" \
+	G_MESSAGES_DEBUG=all \
+	dbus-run-session gnome-shell --nested --wayland 2>&1 | grep  --line-buffered "LightTodo"
 
 # For GNOME 49+, use devkit instead:
 .PHONY: test-devkit
 test-devkit: install
-	MUTTER_DEBUG_DUMMY_MODE_SPECS="1280x720" dbus-run-session gnome-shell --devkit --wayland
+	@echo "🚀  Starting nested GNOME Shell (Wayland)…"
+	@echo "    Inside the new window, run:"
+	@echo "    gnome-extensions enable $(UUID)"
+	@echo ""
+	MUTTER_DEBUG_DUMMY_MODE_SPECS="1280x720" \
+	G_MESSAGES_DEBUG=all \
+	dbus-run-session gnome-shell --devkit --wayland 2>&1 | grep  --line-buffered "LightTodo"
 
 # ── Logs ──────────────────────────────────────────────────────────────────────
 

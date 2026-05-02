@@ -671,32 +671,36 @@ const LightTodoIndicator = GObject.registerClass(
     private _getPinned(): string[] { return this._settings.get_strv("pinned"); }
 
     private _addTodo(text: string): void {
-      if (!text) return;
+      try {
+        if (!text) return;
 
-      const todos = this._getTodos();
-      if (todos.includes(text)) {
-        log(`Attempted to add duplicate todo -> "${text}"`);
-        return;
-      }
-
-      log(`Successfully added todo -> "${text}"`);
-
-      // Updating settings triggers _refresh(), which rebuilds the UI
-      this._settings.set_strv("todos", [...todos, text]);
-
-      // Clear the text for the next item
-      this._entry.set_text("");
-      this._entry.remove_style_class_name("todo-entry-valid");
-      this._entry.remove_style_class_name("todo-entry-invalid");
-
-      // FIX: Yield to the main loop, wait for _refresh() to finish rebuilding 
-      // the Clutter actors, and then forcefully reclaim keyboard focus.
-      GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-        if (this._entry && this._entry.is_mapped()) {
-          this._entry.grab_key_focus();
+        const todos = this._getTodos();
+        if (todos.includes(text)) {
+          Logger.info(`Attempted to add duplicate todo -> "${text}"`);
+          return;
         }
-        return GLib.SOURCE_REMOVE;
-      }, null);
+
+        Logger.info(`Successfully added todo -> "${text}"`);
+
+        // Updating settings triggers _refresh(), which rebuilds the UI
+        this._settings.set_strv("todos", [...todos, text]);
+
+        // Clear the text for the next item
+        this._entry.set_text("");
+        this._entry.remove_style_class_name("todo-entry-valid");
+        this._entry.remove_style_class_name("todo-entry-invalid");
+
+        // Yield to the main loop, wait for _refresh() to finish rebuilding 
+        // the Clutter actors, and then forcefully reclaim keyboard focus.
+        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+          if (this._entry && this._entry.is_mapped()) {
+            this._entry.grab_key_focus();
+          }
+          return GLib.SOURCE_REMOVE;
+        }, null);
+      } catch (error) {
+        Logger.error(`_addTodo() Error`, error)
+      }
     }
 
     private _deleteTodo(text: string): void {
@@ -757,7 +761,7 @@ const LightTodoIndicator = GObject.registerClass(
       const todos = this._getTodos();
 
       if (todos.includes(newText) && oldText !== newText) {
-        log(`Cannot rename to "${newText}": already exists.`);
+        Logger.info(`Cannot rename to "${newText}": already exists.`);
         this._refresh();
         return;
       }
@@ -792,7 +796,7 @@ const LightTodoIndicator = GObject.registerClass(
       const newTargetIndex = todos.indexOf(targetText);
       todos.splice(newTargetIndex, 0, sourceText);
 
-      log(`Moved "${sourceText}" to index ${newTargetIndex}`);
+      Logger.info(`Moved "${sourceText}" to index ${newTargetIndex}`);
       this._settings.set_strv("todos", todos);
     }
 
@@ -1022,28 +1026,34 @@ export default class LightTodoExtension extends Extension {
   private _positionChangedId: number = 0; // NEW: Track position setting changes
 
   override enable(): void {
-    this._settings = this.getSettings() as unknown as Gio.Settings;
-    this._indicator = new LightTodoIndicator(this._settings, this);
+    try {
+      this._settings = this.getSettings() as unknown as Gio.Settings;
+      this._indicator = new LightTodoIndicator(this._settings, this);
 
-    // Initial registration in the status area (makes it trackable)
-    Main.panel.addToStatusArea(this.uuid, this._indicator);
+      // Initial registration in the status area (makes it trackable)
+      Main.panel.addToStatusArea(this.uuid, this._indicator);
 
-    // NEW: Listen for position changes and apply immediately
-    this._positionChangedId = this._settings.connect("changed::panel-position", () => this._updatePosition());
-    this._updatePosition();
+      // NEW: Listen for position changes and apply immediately
+      this._positionChangedId = this._settings.connect("changed::panel-position", () => this._updatePosition());
+      this._updatePosition();
 
-    // Register global Wayland-native shortcut (automatically updates when you change the setting!)
-    Main.wm.addKeybinding(
-      "toggle-shortcut",
-      this._settings,
-      Meta.KeyBindingFlags.NONE,
-      Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
-      () => {
-        if (this._indicator && this._indicator.menu) {
-          this._indicator.menu.toggle();
+      // Register global Wayland-native shortcut (automatically updates when you change the setting!)
+      Main.wm.addKeybinding(
+        "toggle-shortcut",
+        this._settings,
+        Meta.KeyBindingFlags.NONE,
+        Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
+        () => {
+          if (this._indicator && this._indicator.menu) {
+            this._indicator.menu.toggle();
+          }
         }
-      }
-    );
+      );
+
+      Logger.info(`LightTodo enabled`)
+    } catch (error) {
+      Logger.error(`from enable()`, error)
+    }
   }
 
   // NEW: Safely moves the Clutter actor to the requested panel sector
@@ -1086,12 +1096,7 @@ export default class LightTodoExtension extends Extension {
 }
 
 
-/**
- * A custom logger that automatically prepends the extension name.
- */
-function log(message: string): void {
-  console.log(`LightTodo: ${message}`);
-}
+
 
 /**
  * Attaches a floating tooltip to any St.Widget.
@@ -1147,3 +1152,41 @@ function setupTooltip(actor: St.Widget, text: string | (() => string)): void {
   actor.connect("destroy", destroyTooltip);
   actor.connect("hide", destroyTooltip);
 }
+
+/**
+ * Advanced Colorized Logger for GNOME Shell
+ */
+const Logger = {
+  // ANSI Color Codes
+  cyan: '\x1b[36m',
+  red: '\x1b[31m',
+  yellow: '\x1b[33m',
+  reset: '\x1b[0m',
+
+  info: (msg: string) => {
+    print(`${Logger.cyan}[LightTodo]${Logger.reset} ${msg}`);
+  },
+
+  error: (msg: string, error?: any) => {
+    // 1. Start with the main error message
+    let output = `${Logger.red}[LightTodo ERROR]${Logger.reset} ${msg}`;
+
+    // 2. Append the stack trace, making sure [LightTodo] is on EVERY line
+    if (error) {
+      if (error.stack) {
+        const stackLines = error.stack.split('\n');
+        for (const line of stackLines) {
+          if (line.trim() !== "") {
+            // Added [LightTodo] right before the arrow so grep keeps the line!
+            output += `\n${Logger.yellow}[LightTodo]  ↳ ${line.trim()}${Logger.reset}`;
+          }
+        }
+      } else {
+        output += `\n${Logger.yellow}[LightTodo]  ↳ ${error.message || error}${Logger.reset}`;
+      }
+    }
+
+    // 3. Print everything at once
+    printerr(output);
+  }
+};

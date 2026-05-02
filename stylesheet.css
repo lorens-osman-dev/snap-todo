@@ -360,9 +360,33 @@
   /* Invisible until opened, but captures clicks when active */
 }
 
+/* Base styles: structural geometry only */
 .todo-drawer {
-  background-color: rgba(30, 30, 30, 0.98);
-  border-left: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: -4px 0 24px rgba(0, 0, 0, 0.6);
   padding: 12px;
+}
+
+.todo-drawer-title {
+  font-weight: bold; 
+  font-size: 24px;
+}
+
+/* ── Dark Theme Overrides ── */
+.todo-dark-theme.todo-drawer {
+  background-color: rgba(30, 30, 30, 0.98);
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.todo-dark-theme .todo-drawer-title {
+  color: #ffffff;
+}
+
+/* ── Light Theme Overrides ── */
+.todo-light-theme.todo-drawer {
+  background-color: rgba(250, 250, 250, 0.98);
+  border-left: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.todo-light-theme .todo-drawer-title {
+  color: #242424;
 }

@@ -48,7 +48,7 @@ import { TodosService } from "../services/todosService.js";
 import { copyToClipboard } from "../services/clipboard.js";
 import { setupTooltip } from "../utils/tooltip.js";
 
-const DRAWER_WIDTH_PX = 400;
+const DRAWER_WIDTH_PX = 600;
 
 export class TodoDrawer {
 

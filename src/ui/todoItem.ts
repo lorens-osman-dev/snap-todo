@@ -63,6 +63,9 @@ export const TodoItem = GObject.registerClass(
     private _isCompleted: boolean;
     private _isPinned: boolean;
 
+    private _defaultView: St.BoxLayout;
+    private _actionsView: St.BoxLayout;
+
     // ─── Constructor ──────────────────────────────────────────────────────────
 
     constructor(
@@ -129,16 +132,80 @@ export const TodoItem = GObject.registerClass(
       const deleteBtn = this._buildDeleteButton(pinned);
 
       // ── Layout ─────────────────────────────────────────────────────────────
-      box.add_child(dragBtn);
-      box.add_child(checkBtn);
-      box.add_child(this._label);
-      box.add_child(this._infoBtn);
-      box.add_child(this._entry);
-      box.add_child(pinBtn);
-      box.add_child(editBtn);
-      box.add_child(deleteBtn);
-      this.add_child(box);
+      // ── Layout Orchestration (Inline Overflow Menu) ────────────────────────
+      const rootBox = new St.BoxLayout({ style_class: "todo-item-box", x_expand: true });
 
+      // 1. Globally Visible Elements
+      rootBox.add_child(dragBtn);
+
+      const dynamicContainer = new St.BoxLayout({ x_expand: true, y_align: Clutter.ActorAlign.CENTER });
+
+      // 2. Default View (Text + Pinned + View More)
+      this._defaultView = new St.BoxLayout({ x_expand: true });
+      this._defaultView.add_child(this._label);
+
+      if (pinned) {
+        this._defaultView.add_child(pinBtn);
+      }
+      if (completed) {
+        this._defaultView.add_child(checkBtn);
+      }
+
+      this._defaultView.add_child(this._infoBtn);
+
+      const moreBtn = new St.Button({ style_class: "todo-edit-btn", x_align: Clutter.ActorAlign.END });
+      moreBtn.add_child(new St.Icon({ icon_name: "view-more-symbolic", style_class: "todo-edit-icon" }));
+      setupTooltip(moreBtn, "More actions");
+      this._defaultView.add_child(moreBtn);
+
+      // 3. Actions View (The Overflow Menu)
+      // Added spacing so the buttons don't bunch together
+      this._actionsView = new St.BoxLayout({ x_expand: true, visible: false, style: "spacing: 6px;" });
+
+      this._actionsView.add_child(checkBtn);
+
+      if (!pinned) {
+        this._actionsView.add_child(pinBtn);
+      }
+
+
+      this._actionsView.add_child(editBtn);
+      this._actionsView.add_child(deleteBtn);
+
+      // Push the close button to the far right edge
+      const spacer = new St.Widget({ x_expand: true });
+      this._actionsView.add_child(spacer);
+
+      const closeMoreBtn = new St.Button({ style_class: "todo-edit-btn", x_align: Clutter.ActorAlign.END });
+      closeMoreBtn.add_child(new St.Icon({ icon_name: "go-previous-symbolic", style_class: "todo-edit-icon" }));
+      setupTooltip(closeMoreBtn, "Back");
+      this._actionsView.add_child(closeMoreBtn);
+
+      // 4. Assemble Container
+      dynamicContainer.add_child(this._defaultView);
+      dynamicContainer.add_child(this._actionsView);
+      dynamicContainer.add_child(this._entry);
+
+      rootBox.add_child(dynamicContainer);
+      this.add_child(rootBox);
+
+      // ── Toggle Wiring ──
+      moreBtn.connect("clicked", () => {
+        this._defaultView.hide();
+        this._actionsView.show();
+
+        // ── Highlight Application ──
+        // Apply the highlight to the root row actor
+        this.add_style_class_name("todo-item-actions-active");
+      });
+
+      closeMoreBtn.connect("clicked", () => {
+        this._actionsView.hide();
+        this._defaultView.show();
+
+        // ── Highlight Removal ──
+        this.remove_style_class_name("todo-item-actions-active");
+      });
       // ── STRICT VISIBILITY ENFORCEMENT ──
       // Clutter's St.BoxLayout mapping phase can sometimes override the `visible`
       // property passed in the constructor. We explicitly hide the actors here 
@@ -269,7 +336,7 @@ export const TodoItem = GObject.registerClass(
         label: "×",
         x_align: Clutter.ActorAlign.END,
       });
-      setupTooltip(btn, "Delete this Todo");
+      setupTooltip(btn, "Delete this Todo / Del key");
       return btn;
     }
 
@@ -327,7 +394,14 @@ export const TodoItem = GObject.registerClass(
     private _startEdit(): void {
       if (this._isEditing) return;
       this._isEditing = true;
-      this._label.hide();
+
+      // Hide both UI states to make room for the text entry
+      this._defaultView.hide();
+      this._actionsView.hide();
+
+      // CLEANUP: Ensure the actions highlight is stripped if it was open
+      this.remove_style_class_name("todo-item-actions-active");
+
       this._entry.set_text(this._text);
       this._entry.show();
 
@@ -344,21 +418,21 @@ export const TodoItem = GObject.registerClass(
       const newText = this._entry.get_text().trim();
 
       this._entry.hide();
-      this._label.show();
+      this._defaultView.show(); // Always restore to the default view
+
+      // CLEANUP: Redundantly strip the highlight just to guarantee a clean state
+      this.remove_style_class_name("todo-item-actions-active");
 
       if (newText && newText !== this._text) {
         const oldText = this._text;
         this._text = newText;
         this._label.set_text(newText);
         this.emit("todo-edit", oldText, newText);
-        // Re-evaluate the Pango geometry now that the string has changed
         this._updateInfoVisibility();
       } else if (!newText) {
-        // Empty → revert; don't emit
         this._entry.set_text(this._text);
       }
     }
-
     // ─── Keyboard Events ─────────────────────────────────────────────────────
 
     /**

@@ -125,9 +125,32 @@ export class TodosService {
   }
 
   /**
-   * Remove a todo from all lists (todos, completed, pinned).
-   */
+     * Remove a todo from all lists (todos, completed, pinned).
+     * Calculates nextFocusText so the renderer can restore keyboard focus
+     * to the logical successor after the item's Clutter actor is destroyed.
+     */
   delete(text: string): void {
+    // ─── Spatial Focus Calculation ───
+    // Before removing the data, determine which item is visually adjacent 
+    // to it so we can hand off keyboard focus after the UI rebuilds.
+    const { completed } = this.snapshot();
+    const isCurrentlyCompleted = completed.includes(text);
+
+    // Reconstruct the visual order of whichever list the item currently lives in
+    let visual = this.getSortedTodos();
+    visual = isCurrentlyCompleted
+      ? visual.filter(t => completed.includes(t))
+      : visual.filter(t => !completed.includes(t));
+
+    const idx = visual.indexOf(text);
+
+    // Pick the next item if available, otherwise fall back to the previous item
+    this.nextFocusText =
+      idx !== -1 && idx + 1 < visual.length ? visual[idx + 1] :
+        idx !== -1 && idx - 1 >= 0 ? visual[idx - 1] :
+          null;
+
+    // ─── Data Mutation ───
     this._settings.set_strv("todos", this.getTodos().filter(t => t !== text));
     this._settings.set_strv("completed", this.getCompleted().filter(t => t !== text));
     this._settings.set_strv("pinned", this.getPinned().filter(t => t !== text));

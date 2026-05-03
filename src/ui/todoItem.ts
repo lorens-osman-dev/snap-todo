@@ -28,7 +28,13 @@ import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
 import * as DND from "resource:///org/gnome/shell/ui/dnd.js";
 import { setupTooltip } from "../utils/tooltip.js";
 
-// ─── Registration ddddd─────────────────────────────────────────────────────────────
+// ─── Module-Level Phantom Hover Protection ───
+// Wayland/Clutter picking causes "phantom hovers" when the scroll view shifts
+// items underneath a stationary mouse pointer. These locks protect key focus.
+let _intendedFocusActor: Clutter.Actor | null = null;
+let _phantomHoverLockId: number = 0;
+
+// ─── Registration ─────────────────────────────────────────────────────────────
 
 export const TodoItem = GObject.registerClass(
   {
@@ -98,7 +104,7 @@ export const TodoItem = GObject.registerClass(
 
       // ── Action buttons ─────────────────────────────────────────────────────
       const pinBtn = this._buildPinButton(pinned);
-      const editBtn = this._buildEditButton();
+      const editBtn = this._buildEditButton(pinned);
       const deleteBtn = this._buildDeleteButton(pinned);
 
       // ── Layout ─────────────────────────────────────────────────────────────
@@ -128,11 +134,32 @@ export const TodoItem = GObject.registerClass(
 
       // ── Scroll into view when focused ──────────────────────────────────────
       this.connect("notify::active", () => {
-        if (this.active) this._scrollToItem();
-        else this.remove_style_class_name("todo-item-modifier-held");
+        if (this.active) {
+          // Phantom Hover Protection: Reject activation if a scroll is shifting the layout
+          if (_phantomHoverLockId !== 0 && _intendedFocusActor && _intendedFocusActor !== this) {
+            this.active = false;
+            return;
+          }
+          this._scrollToItem();
+        } else {
+          this.remove_style_class_name("todo-item-modifier-held");
+        }
       });
 
-      this.connect("key-focus-in", () => this._scrollToItem());
+      this.connect("key-focus-in", () => {
+        // Phantom Hover Protection: Re-grab focus if a stationary pointer stole it
+        if (_phantomHoverLockId !== 0 && _intendedFocusActor && _intendedFocusActor !== this) {
+          GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+            if (_intendedFocusActor) {
+              _intendedFocusActor.grab_key_focus();
+              (_intendedFocusActor as any).active = true;
+            }
+            return GLib.SOURCE_REMOVE;
+          }, null);
+          return;
+        }
+        this._scrollToItem();
+      });
     }
 
     // ─── Button Builders ─────────────────────────────────────────────────────
@@ -181,10 +208,11 @@ export const TodoItem = GObject.registerClass(
       return btn;
     }
 
-    private _buildEditButton(): St.Button {
+    private _buildEditButton(pinned: boolean): St.Button {
       const btn = new St.Button({
         style_class: "todo-edit-btn",
         x_align: Clutter.ActorAlign.END,
+        visible: !pinned, // Enforce visibility constraint
       });
       btn.add_child(new St.Icon({
         icon_name: "document-edit-symbolic",
@@ -209,6 +237,7 @@ export const TodoItem = GObject.registerClass(
       const btn = new St.Button({
         style_class: pinned ? "todo-pin-btn todo-pinned" : "todo-pin-btn",
         x_align: Clutter.ActorAlign.END,
+        visible: !pinned, // Enforce visibility constraint
       });
       btn.add_child(new St.Icon({
         icon_name: pinned ? "starred-symbolic" : "non-starred-symbolic",
@@ -371,10 +400,32 @@ export const TodoItem = GObject.registerClass(
           const itemH = this.height;
           const visibleH = scrollView.height;
 
+          let targetValue = adj.value;
+          let needsScroll = false;
+
           if (relY < 0) {
-            adj.value += relY;                    // scroll up
+            targetValue += relY;
+            needsScroll = true;
           } else if (relY + itemH > visibleH) {
-            adj.value += relY + itemH - visibleH; // scroll down
+            targetValue += relY + itemH - visibleH;
+            needsScroll = true;
+          }
+
+          if (needsScroll) {
+            // Lock focus to prevent phantom hovers from stealing it during layout shift
+            _intendedFocusActor = this;
+            if (_phantomHoverLockId) {
+              GLib.source_remove(_phantomHoverLockId);
+            }
+
+            adj.value = targetValue;
+
+            // Release the lock after the next Clutter picking frame (50ms is safe)
+            _phantomHoverLockId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
+              _phantomHoverLockId = 0;
+              _intendedFocusActor = null;
+              return GLib.SOURCE_REMOVE;
+            }, null);
           }
         }
 

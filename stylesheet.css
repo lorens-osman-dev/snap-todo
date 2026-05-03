@@ -188,18 +188,33 @@
 
 /* The floating clone that follows the mouse pointer */
 .todo-drag-actor {
-  background-color: rgba(30, 30, 30, 0.95);
   padding: 6px 12px;
   border-radius: 6px;
   border: 1px solid #4a90d9;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-  spacing: 8px; /* Force internal layout spacing identical to real row */
+  spacing: 8px; 
+  /* CRITICAL: Do not use box-shadow or rgba() transparencies here. 
+     Solid backgrounds prevent Wayland compositor smearing artifacts. */
 }
 
-/* Respect light theme for the floating clone */
-.todo-light-theme .todo-drag-actor {
-  background-color: rgba(250, 250, 250, 0.95);
+/* Explicit Dark Theme for the global DND layer */
+.todo-drag-actor.todo-dark-theme {
+  background-color: #242424;
+  color: #ffffff;
+}
+
+/* Explicit Light Theme for the global DND layer */
+.todo-drag-actor.todo-light-theme {
+  background-color: #ffffff;
   color: #242424;
+}
+
+/* Ensure the drag handle icon adapts its color to the theme */
+.todo-drag-actor.todo-dark-theme .todo-drag-icon {
+  color: #cccccc;
+}
+
+.todo-drag-actor.todo-light-theme .todo-drag-icon {
+  color: #666666;
 }
 
 /* Valid drop target row indicator */

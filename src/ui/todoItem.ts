@@ -426,26 +426,24 @@ export const TodoItem = GObject.registerClass(
     }
 
     getDragActor(): Clutter.Actor {
-      // Snapshot the source row's current rendered size BEFORE constructing clone
-      const srcWidth = this.width;
-      const srcHeight = this.height;
+      // DND actors are injected into the global UI group, meaning they lose 
+      // inherited CSS classes from the menu/drawer. We must explicitly re-apply them.
+      const desktopSettings = new Gio.Settings({ schema_id: "org.gnome.desktop.interface" });
+      const isDark = desktopSettings.get_string("color-scheme") === "prefer-dark";
+      const themeClass = isDark ? "todo-dark-theme" : "todo-light-theme";
 
       const box = new St.BoxLayout({
-        style_class: "todo-item-box todo-drag-actor",
-        // Prevent the orphaned actor from expanding once reparented to uiGroup
-        x_expand: false,
-        y_expand: false,
+        // Append the evaluated theme class directly to the clone
+        style_class: `todo-item-box todo-drag-actor ${themeClass}`,
       });
 
-      // Clamp to the source row dimensions so the clone never inflates
-      box.set_width(srcWidth);
-      box.set_height(srcHeight);
-
+      // Retain the drag handle icon for visual consistency
       box.add_child(new St.Icon({
         icon_name: "list-drag-handle-symbolic",
         style_class: "todo-drag-icon",
       }));
 
+      // Clone the label state (including crossed-out completed styling)
       box.add_child(new St.Label({
         text: this._text,
         style_class: this._label.style_class,

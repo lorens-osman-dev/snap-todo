@@ -31,6 +31,8 @@
 
 .todo-label {
   font-size: 13px;
+  /* Enforce a geometric boundary to trigger the Pango ellipsis */
+  max-width: 300px; 
 }
 
 .todo-label-done {

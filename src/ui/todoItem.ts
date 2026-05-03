@@ -22,6 +22,7 @@ declare const global: any;
 import GObject from "gi://GObject";
 import St from "gi://St";
 import Gio from "gi://Gio";
+import Pango from "gi://Pango";
 import GLib from "gi://GLib";
 import Clutter from "gi://Clutter";
 import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
@@ -92,6 +93,22 @@ export const TodoItem = GObject.registerClass(
         style_class: completed ? "todo-label todo-label-done" : "todo-label",
         x_expand: true,
         y_align: Clutter.ActorAlign.CENTER,
+        reactive: true, // Required for the actor to receive hover events for the tooltip
+      });
+
+      // ── STRICT ELLIPSIZATION ──
+      // Delegate Wayland text truncation to the underlying Pango layout engine
+      this._label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+
+      // ── DYNAMIC TOOLTIP ──
+      // We evaluate the Pango layout mathematically on hover. The tooltip will only
+      // populate if the hardware renderer was forced to truncate this specific string.
+      setupTooltip(this._label, () => {
+        const layout = this._label.clutter_text.get_layout();
+        if (layout.is_ellipsized()) {
+          return this._text;
+        }
+        return ""; // Suppress the tooltip if the text fits completely
       });
 
       this._entry = new St.Entry({

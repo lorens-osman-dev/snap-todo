@@ -360,6 +360,10 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   text-align: center;
+  
+  /* ── STRICT GEOMETRY BOUNDARY ── */
+  /* Forces the tooltip to stop expanding and triggers Pango wrapping */
+  max-width: 280px; 
 }
 
 

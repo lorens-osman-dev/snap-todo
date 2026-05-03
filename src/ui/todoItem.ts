@@ -29,6 +29,7 @@ import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
 import * as DND from "resource:///org/gnome/shell/ui/dnd.js";
 import { setupTooltip } from "../utils/tooltip.js";
 
+
 // ─── Module-Level Phantom Hover Protection ───
 // Wayland/Clutter picking causes "phantom hovers" when the scroll view shifts
 // items underneath a stationary mouse pointer. These locks protect key focus.
@@ -56,6 +57,7 @@ export const TodoItem = GObject.registerClass(
     private _entry: St.Entry;
     private _isEditing: boolean = false;
     private _settings: Gio.Settings;
+    private _infoBtn: St.Button;
 
     // Reliable state for DND boundary enforcement
     private _isCompleted: boolean;
@@ -119,6 +121,8 @@ export const TodoItem = GObject.registerClass(
         can_focus: true,
       });
 
+      this._infoBtn = this._buildInfoButton();
+
       // ── Action buttons ─────────────────────────────────────────────────────
       const pinBtn = this._buildPinButton(pinned);
       const editBtn = this._buildEditButton();
@@ -128,6 +132,7 @@ export const TodoItem = GObject.registerClass(
       box.add_child(dragBtn);
       box.add_child(checkBtn);
       box.add_child(this._label);
+      box.add_child(this._infoBtn);
       box.add_child(this._entry);
       box.add_child(pinBtn);
       box.add_child(editBtn);
@@ -147,6 +152,12 @@ export const TodoItem = GObject.registerClass(
       if (pinned) {
         deleteBtn.hide();
       }
+
+      // ── Pango Evaluation Trigger ──
+      // Calculate visibility once the row is physically rendered into the layout
+      this._label.connect("notify::mapped", () => {
+        if (this._label.is_mapped()) this._updateInfoVisibility();
+      });
 
       // ── Signal wiring ──────────────────────────────────────────────────────
       checkBtn.connect("clicked", () => this.emit("todo-toggle", this._text));
@@ -275,6 +286,42 @@ export const TodoItem = GObject.registerClass(
       return btn;
     }
 
+
+    private _buildInfoButton(): St.Button {
+      const btn = new St.Button({
+        style_class: "todo-edit-btn",
+        x_align: Clutter.ActorAlign.END,
+        visible: false, // Hidden by default; evaluated after layout allocation
+        can_focus: false, // Prevent it from interrupting Up/Down keyboard navigation
+      });
+      btn.add_child(new St.Icon({
+        icon_name: "dialog-information-symbolic", // Standard Adwaita info icon
+        style_class: "todo-edit-icon",
+      }));
+
+      // The tooltip dynamically fetches the latest text (useful if edited)
+      setupTooltip(btn, () => this._text);
+      return btn;
+    }
+
+    //private method to evaluate the Pango layout. By wrapping it in GLib.idle_add, 
+    // we wait for the GPU to finish painting the geometry before we interrogate the ellipsis status.
+    private _updateInfoVisibility(): void {
+      GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+        // Ensure the widget still exists and is painted on screen
+        if (!this._label || !this._label.is_mapped()) return GLib.SOURCE_REMOVE;
+
+        const layout = this._label.clutter_text.get_layout();
+        const isCut = layout.is_ellipsized();
+
+        // Only trigger a scene graph mutation if the state actually needs to change
+        if (this._infoBtn.visible !== isCut) {
+          this._infoBtn.visible = isCut;
+        }
+        return GLib.SOURCE_REMOVE;
+      }, null);
+    }
+
     // ─── Inline Edit ─────────────────────────────────────────────────────────
 
     private _startEdit(): void {
@@ -304,6 +351,8 @@ export const TodoItem = GObject.registerClass(
         this._text = newText;
         this._label.set_text(newText);
         this.emit("todo-edit", oldText, newText);
+        // Re-evaluate the Pango geometry now that the string has changed
+        this._updateInfoVisibility();
       } else if (!newText) {
         // Empty → revert; don't emit
         this._entry.set_text(this._text);

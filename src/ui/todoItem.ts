@@ -36,6 +36,10 @@ import { setupTooltip } from "../utils/tooltip.js";
 let _intendedFocusActor: Clutter.Actor | null = null;
 let _phantomHoverLockId: number = 0;
 
+// ─── Module-Level Actions View Tracker ───
+// Ensures only one inline action menu can be open at a time globally.
+let _activeActionsItem: any = null;
+
 // ─── Registration ─────────────────────────────────────────────────────────────
 
 export const TodoItem = GObject.registerClass(
@@ -56,6 +60,7 @@ export const TodoItem = GObject.registerClass(
     private _label: St.Label;
     private _entry: St.Entry;
     private _isEditing: boolean = false;
+    private _actionsTimeoutId: number | null = null;
     private _settings: Gio.Settings;
     private _infoBtn: St.Button;
 
@@ -189,23 +194,35 @@ export const TodoItem = GObject.registerClass(
       rootBox.add_child(dynamicContainer);
       this.add_child(rootBox);
 
+
       // ── Toggle Wiring ──
-      moreBtn.connect("clicked", () => {
-        this._defaultView.hide();
-        this._actionsView.show();
+      moreBtn.connect("clicked", () => this.openActions());
+      closeMoreBtn.connect("clicked", () => this.closeActions());
 
-        // ── Highlight Application ──
-        // Apply the highlight to the root row actor
-        this.add_style_class_name("todo-item-actions-active");
+      // ── Hover-State Machine for Auto-Close ──
+      // Pauses the close timer while the user is actively interacting with the row.
+      this.connect("notify::hover", () => {
+        // Only evaluate hover logic if this specific row's action menu is open
+        if (_activeActionsItem !== this) return;
+
+        if (this.hover) {
+          // Pointer entered: Cancel the countdown
+          this._clearActionsTimer();
+        } else {
+          // Pointer left: Start the 2-second countdown
+          this._startActionsTimer();
+        }
       });
 
-      closeMoreBtn.connect("clicked", () => {
-        this._actionsView.hide();
-        this._defaultView.show();
-
-        // ── Highlight Removal ──
-        this.remove_style_class_name("todo-item-actions-active");
+      // CLEANUP: Prevent memory leaks and dangling pointers if the item is destroyed
+      this.connect("destroy", () => {
+        this._clearActionsTimer();
+        if (_activeActionsItem === this) {
+          _activeActionsItem = null;
+        }
       });
+
+
       // ── STRICT VISIBILITY ENFORCEMENT ──
       // Clutter's St.BoxLayout mapping phase can sometimes override the `visible`
       // property passed in the constructor. We explicitly hide the actors here 
@@ -389,18 +406,69 @@ export const TodoItem = GObject.registerClass(
       }, null);
     }
 
+    // ─── Actions View State Management ───────────────────────────────────────
+
+    public openActions(): void {
+      // 1. Exclusivity Check: Close any other open actions view globally
+      if (_activeActionsItem && _activeActionsItem !== this) {
+        if (typeof _activeActionsItem.closeActions === "function") {
+          _activeActionsItem.closeActions();
+        }
+      }
+      _activeActionsItem = this;
+
+      // 2. Clear any existing timer for this specific instance
+      this._clearActionsTimer();
+
+      // 3. Toggle UI states
+      this._defaultView.hide();
+      this._actionsView.show();
+      this.add_style_class_name("todo-item-actions-active");
+
+      // 4. Start timer ONLY if the pointer is not currently hovering over this row
+      if (!this.hover) {
+        this._startActionsTimer();
+      }
+    }
+
+    public closeActions(): void {
+      this._clearActionsTimer();
+
+      if (_activeActionsItem === this) {
+        _activeActionsItem = null;
+      }
+
+      this._actionsView.hide();
+      this._defaultView.show();
+      this.remove_style_class_name("todo-item-actions-active");
+    }
+
+    private _startActionsTimer(): void {
+      this._clearActionsTimer();
+      this._actionsTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
+        this.closeActions();
+        return GLib.SOURCE_REMOVE;
+      }, null);
+    }
+
+    private _clearActionsTimer(): void {
+      if (this._actionsTimeoutId) {
+        GLib.source_remove(this._actionsTimeoutId);
+        this._actionsTimeoutId = null;
+      }
+    }
+
     // ─── Inline Edit ─────────────────────────────────────────────────────────
 
     private _startEdit(): void {
       if (this._isEditing) return;
       this._isEditing = true;
 
-      // Hide both UI states to make room for the text entry
-      this._defaultView.hide();
-      this._actionsView.hide();
+      // Ensure timers are cancelled and CSS highlights are removed
+      this.closeActions();
 
-      // CLEANUP: Ensure the actions highlight is stripped if it was open
-      this.remove_style_class_name("todo-item-actions-active");
+      // Hide the default view to make room for the text entry
+      this._defaultView.hide();
 
       this._entry.set_text(this._text);
       this._entry.show();

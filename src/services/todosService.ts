@@ -193,9 +193,9 @@ export class TodosService {
   }
 
   /**
-   * Move sourceText to the position currently occupied by targetText
-   * (drag-and-drop reorder).
-   */
+     * Move sourceText to the position currently occupied by targetText
+     * (drag-and-drop reorder).
+     */
   reorder(sourceText: string, targetText: string): void {
     const todos = [...this.getTodos()];
     const srcIdx = todos.indexOf(sourceText);
@@ -203,11 +203,18 @@ export class TodosService {
 
     if (srcIdx === -1 || tgtIdx === -1 || srcIdx === tgtIdx) return;
 
+    // 1. Remove the dragged item from its original position
     todos.splice(srcIdx, 1);
-    const newTgt = todos.indexOf(targetText);
-    todos.splice(newTgt, 0, sourceText);
 
-    Logger.info(`Moved "${sourceText}" to index ${newTgt}`);
+    // 2. Insert it exactly at the original target index.
+    // Why this works natively:
+    // - Dragging UP: Removing the source doesn't change the target's index. 
+    //   Inserting at tgtIdx pushes the target down 1 slot.
+    // - Dragging DOWN: Removing the source shifts the target left by 1 slot.
+    //   Inserting at the original tgtIdx places the source perfectly AFTER the target.
+    todos.splice(tgtIdx, 0, sourceText);
+
+    Logger.info(`Moved "${sourceText}" to index ${tgtIdx}`);
     this._settings.set_strv("todos", todos);
   }
 

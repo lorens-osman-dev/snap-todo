@@ -165,6 +165,8 @@
 
 /* ── Drag and Drop ────────────────────────────────────────── */
 
+/* ── Drag and Drop ────────────────────────────────────────── */
+
 .todo-drag-btn {
   width: 24px;
   height: 24px;
@@ -184,16 +186,29 @@
   icon-size: 14px;
 }
 
-/* The floating actor that follows the mouse pointer */
+/* The floating clone that follows the mouse pointer */
 .todo-drag-actor {
-  background-color: rgba(128, 128, 128, 0.9);
-  color: #ffffff;
-  padding: 4px 12px;
+  background-color: rgba(30, 30, 30, 0.95);
+  padding: 6px 12px;
   border-radius: 6px;
   border: 1px solid #4a90d9;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  spacing: 8px; /* Force internal layout spacing identical to real row */
 }
 
+/* Respect light theme for the floating clone */
+.todo-light-theme .todo-drag-actor {
+  background-color: rgba(250, 250, 250, 0.95);
+  color: #242424;
+}
+
+/* Valid drop target row indicator */
+.todo-drop-target {
+  background-color: rgba(74, 144, 217, 0.15) !important;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 2px #4a90d9;
+  transition-duration: 100ms;
+}
 /* ── Pin button ───────────────────────────────────────────── */
 
 .todo-pin-btn {

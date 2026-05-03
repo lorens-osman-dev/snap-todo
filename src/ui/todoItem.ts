@@ -28,7 +28,7 @@ import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
 import * as DND from "resource:///org/gnome/shell/ui/dnd.js";
 import { setupTooltip } from "../utils/tooltip.js";
 
-// ─── Registration ─────────────────────────────────────────────────────────────
+// ─── Registration ddddd─────────────────────────────────────────────────────────────
 
 export const TodoItem = GObject.registerClass(
   {
@@ -42,14 +42,17 @@ export const TodoItem = GObject.registerClass(
     },
   },
   class TodoItem extends PopupMenu.PopupBaseMenuItem {
-
     // ─── Private State ────────────────────────────────────────────────────────
 
     private _text: string;
     private _label: St.Label;
     private _entry: St.Entry;
     private _isEditing: boolean = false;
-    private _settings: Gio.Settings; // needed for dynamic modifier tooltip
+    private _settings: Gio.Settings;
+
+    // Reliable state for DND boundary enforcement
+    private _isCompleted: boolean;
+    private _isPinned: boolean;
 
     // ─── Constructor ──────────────────────────────────────────────────────────
 
@@ -63,6 +66,8 @@ export const TodoItem = GObject.registerClass(
       this._text = text;
       this._settings = settings;
 
+      this._isCompleted = completed;
+      this._isPinned = pinned;
       // ── Row container ──────────────────────────────────────────────────────
       const box = new St.BoxLayout({
         style_class: "todo-item-box",
@@ -382,21 +387,73 @@ export const TodoItem = GObject.registerClass(
 
     onDragBegin(): void {
       this.add_style_class_name("todo-item-modifier-held");
+
+      // Lock the natural allocation so DND layout passes can't inflate this row
+      const [, , natW, natH] = this.get_preferred_size();
+      this.set_width(natW);
+      this.set_height(natH);
     }
 
     onDragEnd(): void {
-      try { this.remove_style_class_name("todo-item-modifier-held"); } catch (_) { }
+      // Release fixed size so the row can reflow normally after rebuild
+      this.set_width(-1);
+      this.set_height(-1);
+      this._cleanupDragState();
     }
 
     onDragCancelled(): void {
+      this.set_width(-1);
+      this.set_height(-1);
+      this._cleanupDragState();
+    }
+
+    private _cleanupDragState(): void {
+      // CLEANUP: Use try/catch blocks because GNOME Shell might have already 
+      // started destroying these actors during the list rebuild after a drop.
       try { this.remove_style_class_name("todo-item-modifier-held"); } catch (_) { }
+
+      try {
+        const parent = this.get_parent();
+        if (parent) {
+          parent.get_children().forEach(child => {
+            try {
+              if (typeof (child as any).remove_style_class_name === "function") {
+                (child as any).remove_style_class_name("todo-drop-target");
+              }
+            } catch (_) { }
+          });
+        }
+      } catch (_) { }
     }
 
     getDragActor(): Clutter.Actor {
-      return new St.Label({
-        text: this._text,
-        style_class: "todo-label todo-drag-actor",
+      // Snapshot the source row's current rendered size BEFORE constructing clone
+      const srcWidth = this.width;
+      const srcHeight = this.height;
+
+      const box = new St.BoxLayout({
+        style_class: "todo-item-box todo-drag-actor",
+        // Prevent the orphaned actor from expanding once reparented to uiGroup
+        x_expand: false,
+        y_expand: false,
       });
+
+      // Clamp to the source row dimensions so the clone never inflates
+      box.set_width(srcWidth);
+      box.set_height(srcHeight);
+
+      box.add_child(new St.Icon({
+        icon_name: "list-drag-handle-symbolic",
+        style_class: "todo-drag-icon",
+      }));
+
+      box.add_child(new St.Label({
+        text: this._text,
+        style_class: this._label.style_class,
+        y_align: Clutter.ActorAlign.CENTER,
+      }));
+
+      return box;
     }
 
     getDragActorSource(): Clutter.Actor {
@@ -413,7 +470,38 @@ export const TodoItem = GObject.registerClass(
       if (!source || typeof source.getText !== "function" || source === this) {
         return (DND as any).DragMotionResult?.NO_DROP ?? 0;
       }
+
+      // 1. ALWAYS clean up sibling highlights first!
+      // This ensures that if you move from a valid zone into a forbidden zone,
+      // the previous valid zone immediately loses its blue highlight.
+      try {
+        const parent = this.get_parent();
+        if (parent) {
+          parent.get_children().forEach(child => {
+            if (child !== this) {
+              try { (child as any).remove_style_class_name("todo-drop-target"); } catch (_) { }
+            }
+          });
+        }
+      } catch (_) { }
+
+      // 2. STRICT BOUNDARY ENFORCEMENT via reliable GObject methods.
+      // If the types don't match, reject the drop and skip applying the highlight.
+      if (
+        typeof source.getIsPinned === "function" &&
+        (source.getIsPinned() !== this.getIsPinned() || source.getIsCompleted() !== this.getIsCompleted())
+      ) {
+        return (DND as any).DragMotionResult?.NO_DROP ?? 0;
+      }
+
+      // 3. Apply the visual highlight indicating this row is a valid drop zone
+      this.add_style_class_name("todo-drop-target");
       return (DND as any).DragMotionResult?.MOVE_DROP ?? 2;
+    }
+
+    // Called automatically by Shell DND when the dragged cursor leaves this actor
+    handleDragOut(): void {
+      try { this.remove_style_class_name("todo-drop-target"); } catch (_) { }
     }
 
     acceptDrop(
@@ -423,9 +511,20 @@ export const TodoItem = GObject.registerClass(
       _y: number,
       _time: number,
     ): boolean {
+      this._cleanupDragState();
+
       if (!source || typeof source.getText !== "function" || source === this) {
         return false;
       }
+
+      // STRICT BOUNDARY ENFORCEMENT: Prevent array mutation
+      if (
+        typeof source.getIsPinned === "function" &&
+        (source.getIsPinned() !== this.getIsPinned() || source.getIsCompleted() !== this.getIsCompleted())
+      ) {
+        return false;
+      }
+
       this.emit("todo-move", source.getText(), this._text);
       return true;
     }
@@ -433,6 +532,8 @@ export const TodoItem = GObject.registerClass(
     // ─── Public Accessors ────────────────────────────────────────────────────
 
     getText(): string { return this._text; }
+    getIsPinned(): boolean { return this._isPinned; }
+    getIsCompleted(): boolean { return this._isCompleted; }
   }
 );
 

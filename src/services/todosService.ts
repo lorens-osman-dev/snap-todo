@@ -219,14 +219,13 @@ export class TodosService {
   }
 
   /**
-   * Move a todo one step up (direction=-1) or down (direction=1) in the
-   * visual (sorted) list.  Automatically migrates pin status if the swap
-   * crosses the pinned/unpinned boundary.
-   *
-   * Stores nextFocusText + keepHighlight on the service so the renderer can
-   * restore keyboard focus to the moved item after the rebuild.
-   * Returns false if the move was not possible (already at boundary).
-   */
+     * Move a todo one step up (direction=-1) or down (direction=1) in the
+     * visual (sorted) list.
+     *
+     * Stores nextFocusText + keepHighlight on the service so the renderer can
+     * restore keyboard focus to the moved item after the rebuild.
+     * Returns false if the move was not possible (already at boundary).
+     */
   reorderStep(
     text: string,
     direction: number,
@@ -255,21 +254,30 @@ export class TodosService {
 
     const targetText = visual[targetIdx];
 
-    // Swap in the raw (unsorted) array to persist the new order
-    const newTodos = [...todos];
-    const i1 = newTodos.indexOf(text);
-    const i2 = newTodos.indexOf(targetText);
-    newTodos[i1] = targetText;
-    newTodos[i2] = text;
-
-    // Migrate pin if swapping across the boundary
+    // ─── STRICT BOUNDARY ENFORCEMENT ───
+    // Prevent keyboard reordering from implicitly changing pin state.
+    // This ensures 1:1 parity with the pointer DND logic, which strictly
+    // rejects drops that cross the pinned/unpinned boundary.
     const srcPinned = pinned.includes(text);
     const tgtPinned = pinned.includes(targetText);
+
     if (srcPinned !== tgtPinned) {
-      let newPinned = [...pinned];
-      if (tgtPinned) newPinned.push(text);
-      else newPinned = newPinned.filter(p => p !== text);
-      this._settings.set_strv("pinned", newPinned);
+      return false; // Hit the boundary wall, halt the move
+    }
+
+    // ─── Reorder Row Data ───
+    // Extract and splice into the raw array to persist the new visual placement,
+    // avoiding parity lock when crossing pin boundaries.
+    const newTodos = [...todos];
+    newTodos.splice(newTodos.indexOf(text), 1);
+
+    const targetRawIdx = newTodos.indexOf(targetText);
+
+    // Insert after the target if moving down, or before the target if moving up
+    if (direction === 1) {
+      newTodos.splice(targetRawIdx + 1, 0, text);
+    } else {
+      newTodos.splice(targetRawIdx, 0, text);
     }
 
     // Store focus intent — consumed by TodoListRenderer after render()

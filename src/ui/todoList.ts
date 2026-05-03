@@ -131,19 +131,27 @@ export class TodoListRenderer {
     if (itemToFocus) {
       const highlight = this._service.keepHighlight;
 
-      // Defer to the next main-loop iteration so Clutter finishes layout first
+      // ─── Focus Restoration ───
+      // Defer focus grab to the next main-loop iteration so Clutter's 
+      // layout pipeline finishes allocating the newly built actors first.
       GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
         if (itemToFocus) {
           itemToFocus.active = true;
           itemToFocus.grab_key_focus();
+
           if (highlight) {
             itemToFocus.add_style_class_name("todo-item-modifier-held");
           }
-          // Sync the drawer's internal focus index using the target Actor
+
+          // ─── Keyboard Focus Sync ───
+          // Sync the drawer's internal focus state so Up/Down navigation 
+          // works correctly after a reorder or toggle rebuilds the list.
           if (useDrawer && drawer) {
             drawer.syncFocusedItem(itemToFocus);
           }
         }
+
+        // CLEANUP: Always remove idle sources to prevent memory leaks in the compositor
         return GLib.SOURCE_REMOVE;
       }, null);
 
@@ -151,6 +159,8 @@ export class TodoListRenderer {
       this._service.nextFocusText = null;
       this._service.keepHighlight = false;
     }
+
+
   }
 
   // ─── Signal Wiring ────────────────────────────────────────────────────────

@@ -104,7 +104,7 @@ export const TodoItem = GObject.registerClass(
 
       // ── Action buttons ─────────────────────────────────────────────────────
       const pinBtn = this._buildPinButton(pinned);
-      const editBtn = this._buildEditButton(pinned);
+      const editBtn = this._buildEditButton();
       const deleteBtn = this._buildDeleteButton(pinned);
 
       // ── Layout ─────────────────────────────────────────────────────────────
@@ -116,6 +116,20 @@ export const TodoItem = GObject.registerClass(
       box.add_child(editBtn);
       box.add_child(deleteBtn);
       this.add_child(box);
+
+      // ── STRICT VISIBILITY ENFORCEMENT ──
+      // Clutter's St.BoxLayout mapping phase can sometimes override the `visible`
+      // property passed in the constructor. We explicitly hide the actors here 
+      // to guarantee they do not render for completed items.
+      if (completed) {
+        pinBtn.hide();
+        editBtn.hide();
+      }
+
+      // Pinned items cannot be directly deleted until unpinned
+      if (pinned) {
+        deleteBtn.hide();
+      }
 
       // ── Signal wiring ──────────────────────────────────────────────────────
       checkBtn.connect("clicked", () => this.emit("todo-toggle", this._text));
@@ -208,11 +222,10 @@ export const TodoItem = GObject.registerClass(
       return btn;
     }
 
-    private _buildEditButton(pinned: boolean): St.Button {
+    private _buildEditButton(): St.Button {
       const btn = new St.Button({
         style_class: "todo-edit-btn",
         x_align: Clutter.ActorAlign.END,
-        visible: !pinned, // Enforce visibility constraint
       });
       btn.add_child(new St.Icon({
         icon_name: "document-edit-symbolic",
@@ -227,7 +240,6 @@ export const TodoItem = GObject.registerClass(
         style_class: "todo-delete-btn",
         label: "×",
         x_align: Clutter.ActorAlign.END,
-        visible: !pinned, // pinned items cannot be deleted directly
       });
       setupTooltip(btn, "Delete this Todo");
       return btn;
@@ -237,7 +249,6 @@ export const TodoItem = GObject.registerClass(
       const btn = new St.Button({
         style_class: pinned ? "todo-pin-btn todo-pinned" : "todo-pin-btn",
         x_align: Clutter.ActorAlign.END,
-        visible: !pinned, // Enforce visibility constraint
       });
       btn.add_child(new St.Icon({
         icon_name: pinned ? "starred-symbolic" : "non-starred-symbolic",

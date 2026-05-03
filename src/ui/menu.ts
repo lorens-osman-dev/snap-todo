@@ -86,7 +86,7 @@ export class TodoMenu {
       text: "Todos",
       x_expand: true,
       y_align: Clutter.ActorAlign.CENTER,
-      style: "font-weight: bold; color: #888888; font-size: 12px; margin-left: 6px;",
+      style: "font-weight: bold; font-size: 12px; ",
     });
     headerItem.add_child(this._headerLabel);
 
@@ -144,9 +144,18 @@ export class TodoMenu {
 
     // ─── Completed Submenu ───
     this._completedSubMenu = new PopupMenu.PopupSubMenuMenuItem("Completed");
+    this._completedSubMenu.label.set_style("font-weight: bold; font-size: 12px; ");
+
     this._menu.addMenuItem(this._completedSubMenu);
 
     this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+    this._completedSubMenu.connect('key-focus-in', () => {
+      this._completedSubMenu.add_style_class_name('focused-blue-border');
+    });
+    this._completedSubMenu.connect('key-focus-out', () => {
+      this._completedSubMenu.remove_style_class_name('focused-blue-border');
+    });
 
     // ─── Entry Row ───
     this._buildEntryRow(this._menu);

@@ -78,6 +78,10 @@ export class TodoDrawer {
   private readonly _completedWrapper: St.BoxLayout;
   private readonly _completedHeader: St.Button;
 
+  // ─── Dynamic Header Labels ───
+  private readonly _headerLabel: St.Label;
+  private readonly _completedLabel: St.Label;
+
   /**
    * Index of the currently logically-focused todo row (into the flattened visible array).
    * -1 = focus is in the entry/addBtn zone.
@@ -93,6 +97,7 @@ export class TodoDrawer {
 
   /** GSettings handle for org.gnome.desktop.interface — needed for theme detection. */
   private _desktopSettings!: Gio.Settings;
+
 
   // ── Constructor ───────────────────────────────────────────────────────────
 
@@ -122,12 +127,14 @@ export class TodoDrawer {
 
     // ─── Header Row ───
     const headerBox = new St.BoxLayout({ margin_bottom: 16, margin_top: 8, x_expand: true });
-    headerBox.add_child(new St.Label({
-      text: "",
-      style: "font-weight: bold; font-size: 24px; color: #ffffff;",
+    this._headerLabel = new St.Label({
+      text: "Todos",
+      style_class: "todo-drawer-title",
+      style: "font-weight: bold",
       y_align: Clutter.ActorAlign.CENTER,
       x_expand: true,
-    }));
+    });
+    headerBox.add_child(this._headerLabel);
 
     const copyActiveBtn = this._buildHeaderButton("edit-copy-symbolic");
     copyActiveBtn.connect("clicked", () =>
@@ -161,15 +168,23 @@ export class TodoDrawer {
     this._completedWrapper = new St.BoxLayout({ vertical: true, x_expand: true, visible: false, margin_top: 12 });
     this.completedContainer = new St.BoxLayout({ vertical: true, x_expand: true, visible: false });
 
-    const completedHeaderBox = new St.BoxLayout({ x_expand: true, y_align: Clutter.ActorAlign.CENTER });
-    const completedIcon = new St.Icon({ icon_name: 'pan-end-symbolic', style_class: 'todo-header-icon' });
-    const completedLabel = new St.Label({
-      text: "Completed",
-      style: "font-weight: bold; font-size: 13px; color: #888888; margin-left: 6px;"
+
+    const completedHeaderBox = new St.BoxLayout({
+      x_expand: true,
+      y_align: Clutter.ActorAlign.CENTER,
+      style_class: "todo-completed-header-box"
     });
 
+    this._completedLabel = new St.Label({
+      text: "Completed",
+      style: "font-weight: bold; margin-right:10px"
+    });
+    const spacer = new St.Widget({ x_expand: true });   // pushes following children to the right
+    const completedIcon = new St.Icon({ icon_name: 'pan-end-symbolic', style_class: 'todo-header-icon' });
+
+    completedHeaderBox.add_child(this._completedLabel)
+    // completedHeaderBox.add_child(spacer);
     completedHeaderBox.add_child(completedIcon);
-    completedHeaderBox.add_child(completedLabel);
 
     this._completedHeader = new St.Button({
       style_class: "todo-drawer-completed-header",
@@ -458,8 +473,15 @@ export class TodoDrawer {
     });
   }
 
-  // ── Public API (called by TodoListRenderer) ───────────────────────────────
+  // ── Public API (called by Indicator & Renderer) ───────────────────────────────
 
+  /**
+   * Synchronize the dynamic header counts (active and completed) inside the drawer.
+   */
+  public updateCounts(activeCount: number, completedCount: number): void {
+    this._headerLabel.set_text(`Todos (${activeCount})`);
+    this._completedLabel.set_text(`Completed (${completedCount})`);
+  }
   /**
    * Called to show/hide the entire completed section based on preferences and item counts.
    */

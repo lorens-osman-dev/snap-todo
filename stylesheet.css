@@ -398,7 +398,6 @@
 
 .todo-drawer-title {
   font-weight: bold; 
-  font-size: 24px;
 }
 
 /* ── Dark Theme Overrides ── */
@@ -425,10 +424,25 @@
   background-color: rgba(128, 128, 128, 0.15);
   box-shadow: inset 0 0 0 1px #4a90d9; /* Adwaita blue focus ring */
 }
+
 .todo-drawer-completed-header {
  margin-top: 2px;
  margin-bottom: 2px;
+     padding-top: 5px;
+    padding-bottom: 5px;
 }
 .todo-drawer-completed-header:hover {
     background-color: rgba(128, 128, 128, 0.15);
+}
+
+.todo-header-icon-drawer{
+  margin-left:10px ;
+  font-size: 14px;
+}
+
+
+
+.focused-blue-border {
+ box-shadow: inset 0 0 0 1px #4a90d9;
+  outline: none;
 }

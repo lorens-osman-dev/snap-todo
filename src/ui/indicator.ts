@@ -149,8 +149,9 @@ export const LightTodoIndicator = GObject.registerClass(
       // Update local panel presentation
       this._panelLabel.set_text(String(activeCount));
 
-      // Push state down to the Menu manager
+      // Push state down to the UI managers
       this._todoMenu.refresh(activeCount, completedCount);
+      this._drawer.updateCounts(activeCount, completedCount);
     }
 
     public toggleUI(): void {

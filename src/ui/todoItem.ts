@@ -408,9 +408,8 @@ export const TodoItem = GObject.registerClass(
     }
 
     private _cleanupDragState(): void {
-      // CLEANUP: Use try/catch blocks because GNOME Shell might have already 
-      // started destroying these actors during the list rebuild after a drop.
       try { this.remove_style_class_name("todo-item-modifier-held"); } catch (_) { }
+      try { this.remove_style_class_name("todo-drop-target"); } catch (_) { }
 
       try {
         const parent = this.get_parent();
@@ -459,6 +458,7 @@ export const TodoItem = GObject.registerClass(
     getDragActorSource(): Clutter.Actor {
       return this;
     }
+    // todoItem.ts
 
     handleDragOver(
       source: any,
@@ -467,13 +467,13 @@ export const TodoItem = GObject.registerClass(
       _y: number,
       _time: number,
     ): number {
+      // Early rejections — always wipe our own highlight first
       if (!source || typeof source.getText !== "function" || source === this) {
+        this.remove_style_class_name("todo-drop-target");
         return (DND as any).DragMotionResult?.NO_DROP ?? 0;
       }
 
-      // 1. ALWAYS clean up sibling highlights first!
-      // This ensures that if you move from a valid zone into a forbidden zone,
-      // the previous valid zone immediately loses its blue highlight.
+      // 1. Clean up sibling highlights
       try {
         const parent = this.get_parent();
         if (parent) {
@@ -485,16 +485,17 @@ export const TodoItem = GObject.registerClass(
         }
       } catch (_) { }
 
-      // 2. STRICT BOUNDARY ENFORCEMENT via reliable GObject methods.
-      // If the types don't match, reject the drop and skip applying the highlight.
+      // 2. STRICT BOUNDARY ENFORCEMENT
       if (
         typeof source.getIsPinned === "function" &&
         (source.getIsPinned() !== this.getIsPinned() || source.getIsCompleted() !== this.getIsCompleted())
       ) {
+        // CRITICAL FIX: remove highlight before rejecting, otherwise it sticks
+        this.remove_style_class_name("todo-drop-target");
         return (DND as any).DragMotionResult?.NO_DROP ?? 0;
       }
 
-      // 3. Apply the visual highlight indicating this row is a valid drop zone
+      // 3. Valid target — apply highlight
       this.add_style_class_name("todo-drop-target");
       return (DND as any).DragMotionResult?.MOVE_DROP ?? 2;
     }

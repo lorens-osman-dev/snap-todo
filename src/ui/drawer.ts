@@ -521,6 +521,27 @@ export class TodoDrawer {
     }
   }
 
+  /**
+   * Focus the completed section header button.
+   * Called by TodoListRenderer as a fallback when a completed item is deleted
+   * and there is no successor to focus (e.g. last item deleted, or successor
+   * lives inside a collapsed completedContainer and is therefore unmapped).
+   * If the completed wrapper is no longer visible (section became empty),
+   * falls back to the entry instead.
+   */
+  public focusCompletedHeader(): void {
+    if (this._completedWrapper.visible) {
+      this._clearItemHighlights();
+      // _completedHeader is always mapped when the wrapper is visible
+      this._completedHeader.grab_key_focus();
+      // Sync our index so Up/Down navigation stays coherent
+      this.syncFocusedItem(this._completedHeader);
+    } else {
+      // Section was hidden (last item deleted) — fall back to entry
+      this._focusEntry();
+    }
+  }
+
   // ── Theme ─────────────────────────────────────────────────────────────────
 
   private _updateThemeClass(): void {

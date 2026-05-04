@@ -137,6 +137,17 @@ export class TodoListRenderer {
       // layout pipeline finishes allocating the newly built actors first.
       GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
         if (itemToFocus) {
+          // ─── Mapped Guard (Drawer Collapsed Section) ───
+          // A completed item's successor lives in completedContainer, which may
+          // be collapsed (visible: false). grab_key_focus() on an unmapped actor
+          // is silently dropped by Clutter, causing focus loss identical to the
+          // delete-key bug. Fall back to the completed header, which is always
+          // mapped whenever the wrapper is visible.
+          if (useDrawer && drawer && !itemToFocus.is_mapped()) {
+            drawer.focusCompletedHeader();
+            return GLib.SOURCE_REMOVE;
+          }
+
           itemToFocus.active = true;
           itemToFocus.grab_key_focus();
 
@@ -161,6 +172,28 @@ export class TodoListRenderer {
       // Consume the intent so subsequent refreshes don't re-apply it
       this._service.nextFocusText = null;
       this._service.keepHighlight = false;
+
+    } else if (useDrawer && drawer && this._service.nextFocusText === null) {
+      // ─── Delete-from-Completed Fallback ───
+      // nextFocusText is null in two cases:
+      //   (a) the deleted item was the only one in its list  →  no successor
+      //   (b) a non-delete operation (toggle moves item across lists)       →  handled above
+      //
+      // We distinguish case (a) by checking whether the item that was just
+      // removed was completed. The service has already cleared nextFocusText,
+      // so we use the snapshot AFTER deletion: if completed is now shorter
+      // and the completed wrapper is still visible (or just became hidden),
+      // send focus to the completed header (or entry if section is gone).
+      // This is the exact behaviour Space produces when toggling the last item.
+      const { completed: remainingCompleted } = this._service.snapshot();
+      const deletedFromCompleted = remainingCompleted.length < completed.length;
+
+      if (deletedFromCompleted) {
+        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+          drawer.focusCompletedHeader();
+          return GLib.SOURCE_REMOVE;
+        });
+      }
     }
 
 

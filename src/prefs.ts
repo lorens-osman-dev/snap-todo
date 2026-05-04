@@ -264,6 +264,7 @@ export default class SnapTodoPreferences extends ExtensionPreferences {
     aboutGroup.add(new Adw.ActionRow({ title: "Version", subtitle: "1.0.0" }));
     aboutGroup.add(new Adw.ActionRow({ title: "Author", subtitle: "Lorens Osman" }));
     aboutGroup.add(new Adw.ActionRow({ title: "Email", subtitle: "lorens.osman.dev@gmail.com" }));
+    aboutGroup.add(new Adw.ActionRow({ title: "Github", subtitle: "https://github.com/lorens-osman-dev" }));
 
     return Promise.resolve();
   }

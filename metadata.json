@@ -1,13 +1,16 @@
 {
   "name": "Snap Todo",
-  "description": "A snapweight, distraction-free todo list in your GNOME panel",
+  "description": "Snap Todo lets you write and manage your todos without friction\n\nThe Quick Capture Philosophy\n\t- Hit [Alt + T]\n\t- Write\n\t- Press [Enter]\n\nThe Fluidity System\n\t- Open Snap-todo with [Alt + T] (Customizable)\n\t- Navigate with [Up], [Down] or [Tab]\n\t- Reorder Todos with [Alt + Up/Down]\n\t- Mark a todo complete with [Space]\n\t- Delete Todo with [Delete]\n\t- Exit with [Esc]",
   "uuid": "snap-todo@lorens.com",
   "shell-version": [
     "45",
     "46",
-    "47"
+    "47",
+    "48",
+    "49",
+    "50"
   ],
-  "url": "https://github.com/yourname/snap-todo",
+  "url": "https://github.com/lorens-osman-dev/snap-todo",
   "settings-schema": "org.gnome.shell.extensions.snap-todo",
   "gettext-domain": "snap-todo@lorens.com"
 }

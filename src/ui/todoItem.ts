@@ -281,7 +281,7 @@ export const TodoItem = GObject.registerClass(
               (_intendedFocusActor as any).active = true;
             }
             return GLib.SOURCE_REMOVE;
-          }, null);
+          });
           return;
         }
         this._scrollToItem();
@@ -403,7 +403,7 @@ export const TodoItem = GObject.registerClass(
           this._infoBtn.visible = isCut;
         }
         return GLib.SOURCE_REMOVE;
-      }, null);
+      });
     }
 
     // ─── Actions View State Management ───────────────────────────────────────
@@ -448,7 +448,7 @@ export const TodoItem = GObject.registerClass(
       this._actionsTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
         this.closeActions();
         return GLib.SOURCE_REMOVE;
-      }, null);
+      });
     }
 
     private _clearActionsTimer(): void {
@@ -477,7 +477,7 @@ export const TodoItem = GObject.registerClass(
       GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
         this._entry.grab_key_focus();
         return GLib.SOURCE_REMOVE;
-      }, null);
+      });
     }
 
     private _finishEdit(): void {
@@ -644,12 +644,12 @@ export const TodoItem = GObject.registerClass(
               _phantomHoverLockId = 0;
               _intendedFocusActor = null;
               return GLib.SOURCE_REMOVE;
-            }, null);
+            });
           }
         }
 
         return GLib.SOURCE_REMOVE;
-      }, null);
+      });
     }
 
     // ─── DND Delegate Methods ─────────────────────────────────────────────────

@@ -90,7 +90,7 @@ export function setupTooltip(actor: St.Widget, text: string | (() => string)): v
         tooltip.set_position(tipX, tipY);
 
         return GLib.SOURCE_REMOVE;
-      }, null);
+      });
     } else {
       destroyTooltip();
     }

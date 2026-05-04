@@ -166,7 +166,7 @@ export class TodoMenu {
         GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
           if (this._entry?.is_mapped()) this._entry.grab_key_focus();
           return GLib.SOURCE_REMOVE;
-        }, null);
+        });
       }
     });
   }
@@ -189,7 +189,7 @@ export class TodoMenu {
       GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
         if (this._entry?.is_mapped()) this._entry.grab_key_focus();
         return GLib.SOURCE_REMOVE;
-      }, null);
+      });
     });
 
     this._entry = new St.Entry({
@@ -260,7 +260,7 @@ export class TodoMenu {
       GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
         if (this._entry?.is_mapped()) this._entry.grab_key_focus();
         return GLib.SOURCE_REMOVE;
-      }, null);
+      });
     } catch (error) {
       import("../core/logger.js").then(({ Logger }) =>
         Logger.error("_addTodo()", error),

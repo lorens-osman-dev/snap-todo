@@ -45,6 +45,7 @@ install: build schema
 	cp -r $(DIST)/* $(INSTALL)/
 	cp    metadata.json   $(INSTALL)/
 	cp    stylesheet.css  $(INSTALL)/
+	cp    assets/TODO-SNAP-LOGO-300.svg $(INSTALL)/
 	mkdir -p $(INSTALL)/schemas
 	cp    schemas/*.xml              $(INSTALL)/schemas/
 	cp    schemas/gschemas.compiled  $(INSTALL)/schemas/
@@ -63,6 +64,7 @@ pack: build schema
 	cp -r $(DIST)/* _pack/
 	cp metadata.json  _pack/
 	cp stylesheet.css _pack/
+	cp assets/TODO-SNAP-LOGO-300.svg _pack/
 	cp -r schemas     _pack/
 	cd _pack && zip -r ../$(UUID).zip .
 	rm -rf _pack

@@ -153,7 +153,7 @@ export class TodoListRenderer {
 
         // CLEANUP: Always remove idle sources to prevent memory leaks in the compositor
         return GLib.SOURCE_REMOVE;
-      }, null);
+      });
 
       // Consume the intent so subsequent refreshes don't re-apply it
       this._service.nextFocusText = null;

@@ -211,7 +211,7 @@ export class TodoDrawer {
         this._completedHeader.grab_key_focus();
         this.syncFocusedItem(this._completedHeader);
         return GLib.SOURCE_REMOVE;
-      }, null);
+      });
     });
 
     this._completedWrapper.add_child(this._completedHeader);
@@ -571,7 +571,7 @@ export class TodoDrawer {
       this._entryFocused = true;
       this._focusedIndex = -1;
       return GLib.SOURCE_REMOVE;
-    }, null);
+    });
   }
 
   close(): void {

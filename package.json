@@ -2,12 +2,12 @@
   "name": "snap-todo",
   "version": "1.0.0",
   "type": "module",
-  "description": "A snapweight GNOME Shell todo extension",
+  "description": "Gnome extension lets you write and manage your todos without friction",
   "scripts": {
     "build": "make build",
     "pack": "make pack",
-    "install": "make install",
     "test": "make clean && make test",
+    "install": "make install",
     "clean": "make clean"
   },
   "devDependencies": {

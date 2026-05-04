@@ -41,6 +41,7 @@ export default class SnapTodoExtension extends Extension {
 
   private _positionChangedId: number = 0;
   private _startupCompleteId: number = 0;
+  private _shortcutChangedId: number = 0;
 
   // ─── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -66,37 +67,29 @@ export default class SnapTodoExtension extends Extension {
       );
       this._updatePosition();
 
-      // ─── Keybinding Registration ───
-      // Explanatory Note: Mutter's key grabber may not be ready during cold login. 
-      // We wrap the registration and defer it until the Shell is completely initialized.
-      const bindShortcut = () => {
-        Main.wm.addKeybinding(
-          "toggle-shortcut",
-          this._settings!,
-          Meta.KeyBindingFlags.IGNORE_AUTOREPEAT, // Prevent UI flickering if key is held down
-          Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
-          () => {
-            if (this._settings?.get_boolean("use-drawer")) {
-              // Drawer mode: toggle the slide-out drawer
-              this._drawer?.toggle();
-            } else {
-              // Menu mode: toggle the panel dropdown menu
-              if (this._indicator?.menu) {
-                this._indicator.menu.toggle();
-              }
-            }
-          },
+      // ─── Keybinding Registration (Wayland Cold-Boot Safe) ───
+
+      // Centralized initialization callback for shortcuts
+      const initShortcutSystem = () => {
+        this._bindShortcut();
+
+        // Watch for user changing the shortcut in Preferences and apply instantly
+        this._shortcutChangedId = this._settings!.connect(
+          "changed::toggle-shortcut",
+          () => this._bindShortcut()
         );
       };
 
+      // Protect against the Mutter cold-boot race condition
       if (Main.layoutManager._startingUp) {
         this._startupCompleteId = Main.layoutManager.connect("startup-complete", () => {
-          bindShortcut();
+          initShortcutSystem();
+          // CLEANUP: Fire once and detach
           Main.layoutManager.disconnect(this._startupCompleteId);
           this._startupCompleteId = 0;
         });
       } else {
-        bindShortcut();
+        initShortcutSystem();
       }
 
       Logger.info("enabled");
@@ -106,15 +99,18 @@ export default class SnapTodoExtension extends Extension {
   }
 
   override disable(): void {
-    // CLEANUP: Unbind deferred startup listener to prevent memory leaks if 
-    // the extension is disabled before the shell finishes starting.
+    // CLEANUP: Prevent memory leaks from dangling Shell observers if disabled during startup
     if (this._startupCompleteId) {
       Main.layoutManager.disconnect(this._startupCompleteId);
       this._startupCompleteId = 0;
     }
 
-    // Remove global shortcut first (references indicator)
-    Main.wm.removeKeybinding("toggle-shortcut");
+    // CLEANUP: Always unbind shortcuts and their GSettings listeners
+    this._unbindShortcut();
+    if (this._shortcutChangedId && this._settings) {
+      this._settings.disconnect(this._shortcutChangedId);
+      this._shortcutChangedId = 0;
+    }
 
     // Disconnect panel-position watcher
     if (this._settings && this._positionChangedId) {
@@ -135,6 +131,44 @@ export default class SnapTodoExtension extends Extension {
     this._settings = null;
 
     Logger.info("disabled");
+  }
+
+  // ─── Keybinding Management ────────────────────────────────────────────────
+
+  /**
+   * Safely registers the global toggle shortcut with Mutter.
+   * Includes IGNORE_AUTOREPEAT to prevent Wayland UI lockups if the user holds the key.
+   */
+  private _bindShortcut(): void {
+    // CLEANUP: Always unbind before rebinding to prevent ghost listeners
+    this._unbindShortcut();
+
+    if (!this._settings) return;
+
+    Main.wm.addKeybinding(
+      "toggle-shortcut",
+      this._settings,
+      Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
+      Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
+      () => {
+        if (this._settings?.get_boolean("use-drawer")) {
+          // Drawer mode: toggle the slide-out drawer
+          this._drawer?.toggle();
+        } else {
+          // Menu mode: toggle the panel dropdown menu
+          if (this._indicator?.menu) {
+            this._indicator.menu.toggle();
+          }
+        }
+      },
+    );
+  }
+
+  /**
+   * Removes the global toggle shortcut from Mutter's key grabber.
+   */
+  private _unbindShortcut(): void {
+    Main.wm.removeKeybinding("toggle-shortcut");
   }
 
   // ─── Panel Position ───────────────────────────────────────────────────────

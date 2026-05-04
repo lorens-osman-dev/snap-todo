@@ -249,68 +249,78 @@ export class TodosService {
      * restore keyboard focus to the moved item after the rebuild.
      * Returns false if the move was not possible (already at boundary).
      */
-  reorderStep(
-    text: string,
-    direction: number,
-    keepHighlight: boolean,
-  ): boolean {
+  reorderStep(text: string, direction: number, keepHighlight: boolean): boolean {
     const { todos, completed, pinned } = this.snapshot();
     const showCompleted = this.getShowCompleted();
 
-    let visual = [...todos].sort((a, b) => {
+    // ─── 1. The True Visual Order ───
+    // The UI physically separates Active and Completed items into different 
+    // containers. We must mimic this split to calculate the exact visual index.
+    const activeTodos = todos.filter(t => !completed.includes(t));
+    const completedTodos = todos.filter(t => completed.includes(t));
+
+    const sortFn = (a: string, b: string) => {
       const aP = pinned.includes(a);
       const bP = pinned.includes(b);
       if (aP && !bP) return -1;
       if (!aP && bP) return 1;
       return 0;
-    });
+    };
 
-    if (!showCompleted) {
-      visual = visual.filter(t => !completed.includes(t));
+    activeTodos.sort(sortFn);
+    completedTodos.sort(sortFn);
+
+    // Assemble the list exactly as it renders top-to-bottom on screen
+    let visualList = [...activeTodos];
+    if (showCompleted) {
+      visualList.push(...completedTodos);
     }
 
-    const idx = visual.indexOf(text);
-    if (idx === -1) return false;
+    const vIdx = visualList.indexOf(text);
+    const rIdx = todos.indexOf(text);
 
-    const targetIdx = idx + direction;
-    if (targetIdx < 0 || targetIdx >= visual.length) return false;
+    Logger.info(`[REORDER] Attempting: "${text}" | VisualIdx: ${vIdx} | RawIdx: ${rIdx}`);
 
-    const targetText = visual[targetIdx];
+    // ─── 2. UI Boundary Safety ───
+    const targetVIdx = vIdx + direction;
+    if (targetVIdx < 0 || targetVIdx >= visualList.length) {
+      Logger.info(`[REORDER] Blocked: Reached the absolute edge of the UI list.`);
+      return false;
+    }
 
-    // ─── STRICT BOUNDARY ENFORCEMENT ───
-    // Prevent keyboard reordering from implicitly changing pin state.
-    // This ensures 1:1 parity with the pointer DND logic, which strictly
-    // rejects drops that cross the pinned/unpinned boundary.
+    const targetText = visualList[targetVIdx];
+
+    // ─── 3. Strict Section Enforcement ───
+    // Do not allow keyboard reordering to cross the Pinned/Unpinned line
+    // OR the Active/Completed line. This mirrors the pointer DND rules.
     const srcPinned = pinned.includes(text);
     const tgtPinned = pinned.includes(targetText);
+    const srcCompleted = completed.includes(text);
+    const tgtCompleted = completed.includes(targetText);
 
-    if (srcPinned !== tgtPinned) {
-      return false; // Hit the boundary wall, halt the move
+    if (srcPinned !== tgtPinned || srcCompleted !== tgtCompleted) {
+      Logger.info(`[REORDER] Blocked: Cannot cross Pinned or Completed boundaries.`);
+      return false;
     }
 
-    // ─── Reorder Row Data ───
-    // Extract and splice into the raw array to persist the new visual placement,
-    // avoiding parity lock when crossing pin boundaries.
+    // ─── 4. Atomic Raw Array Swap ───
     const newTodos = [...todos];
-    newTodos.splice(newTodos.indexOf(text), 1);
+    newTodos.splice(rIdx, 1);
 
-    const targetRawIdx = newTodos.indexOf(targetText);
+    const neighborRIdx = newTodos.indexOf(targetText);
+    const finalRIdx = (direction === 1) ? neighborRIdx + 1 : neighborRIdx;
 
-    // Insert after the target if moving down, or before the target if moving up
-    if (direction === 1) {
-      newTodos.splice(targetRawIdx + 1, 0, text);
-    } else {
-      newTodos.splice(targetRawIdx, 0, text);
-    }
+    newTodos.splice(finalRIdx, 0, text);
 
-    // Store focus intent — consumed by TodoListRenderer after render()
+    // ─── 5. Update State ───
     this.nextFocusText = text;
     this.keepHighlight = keepHighlight;
-
     this._settings.set_strv("todos", newTodos);
+
+    Logger.info(`[REORDER] Success! New Raw Array: [${newTodos.join(', ')}]`);
+
     return true;
   }
-
   // ─── Bulk Operations (Preferences) ──────────────────────────────────────────
 
   clearCompleted(): void {

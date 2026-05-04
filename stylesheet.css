@@ -1,4 +1,4 @@
-/* stylesheet.css — Light Todo Extension
+/* stylesheet.css — Snap Todo Extension
  *
  * St CSS is a strict subset of CSS.
  * NOT supported: var(), calc() on colors, darken()/lighten()/alpha(),
@@ -204,7 +204,7 @@
   color: #ffffff;
 }
 
-/* Explicit Light Theme for the global DND layer */
+/* Explicit Snap Theme for the global DND layer */
 .todo-drag-actor.todo-light-theme {
   background-color: #ffffff;
   color: #242424;
@@ -250,7 +250,7 @@
 /* ── Keyboard Modifier Held State ─────────────────────────── */
 
 .todo-item-modifier-held {
-  /* Light yellow background with transparency to play nice with dark/light themes */
+  /* Snap yellow background with transparency to play nice with dark/light themes */
   background-color: rgba(255, 235, 59, 0.15) !important;
   border-radius: 6px;
   transition-duration: 100ms;
@@ -416,7 +416,7 @@
   color: #ffffff;
 }
 
-/* ── Light Theme Overrides ── */
+/* ── Snap Theme Overrides ── */
 .todo-light-theme.todo-drawer {
   background-color: rgba(250, 250, 250, 0.98);
   border-left: 1px solid rgba(0, 0, 0, 0.1);

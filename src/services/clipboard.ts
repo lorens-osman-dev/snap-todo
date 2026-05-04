@@ -60,5 +60,5 @@ export function copyToClipboard(
   const count = all
     ? activeTodos.length + completedTodos.length
     : activeTodos.length;
-  Main.notify("Light Todo", `Copied ${count} item(s) to clipboard`);
+  Main.notify("Snap Todo", `Copied ${count} item(s) to clipboard`);
 }

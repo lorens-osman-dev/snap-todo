@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
-  <schema id="org.gnome.shell.extensions.light-todo"
-          path="/org/gnome/shell/extensions/light-todo/">
+  <schema id="org.gnome.shell.extensions.snap-todo"
+          path="/org/gnome/shell/extensions/snap-todo/">
 
     <key name="todos" type="as">
       <default>[]</default>
@@ -42,7 +42,7 @@
     <key name="toggle-shortcut" type="as">
       <default><![CDATA[['<Alt>t']]]></default>
       <summary>Toggle Todo Panel</summary>
-      <description>Global shortcut to open or close the Light Todo panel menu</description>
+      <description>Global shortcut to open or close the Snap Todo panel menu</description>
     </key>
 
     <key name="show-indicator" type="b">

@@ -3,7 +3,7 @@
  *
  * Responsibility:
  *   - Provide consistent, grep-friendly logging with ANSI colors
- *   - Format stack traces so `journalctl | grep LightTodo` catches every line
+ *   - Format stack traces so `journalctl | grep SnapTodo` catches every line
  *
  * Does NOT:
  *   - Access any GNOME APIs
@@ -17,15 +17,15 @@ const RED = '\x1b[31m';
 const YELLOW = '\x1b[33m';
 const RESET = '\x1b[0m';
 
-const TAG = `${CYAN}[LightTodo]${RESET}`;
-const ETAG = `${RED}[LightTodo ERROR]${RESET}`;
+const TAG = `${CYAN}[SnapTodo]${RESET}`;
+const ETAG = `${RED}[SnapTodo ERROR]${RESET}`;
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 export const Logger = {
   /**
    * Log an informational message.
-   * Visible in: journalctl -f -o cat /usr/bin/gnome-shell | grep LightTodo
+   * Visible in: journalctl -f -o cat /usr/bin/gnome-shell | grep SnapTodo
    */
   info(msg: string): void {
     print(`${TAG} ${msg}`);
@@ -33,7 +33,7 @@ export const Logger = {
 
   /**
    * Log an error with a full stack trace.
-   * Every line is prefixed with [LightTodo] so grep keeps it.
+   * Every line is prefixed with [SnapTodo] so grep keeps it.
    */
   error(context: string, error?: unknown): void {
     let output = `${ETAG} ${context}`;
@@ -45,7 +45,7 @@ export const Logger = {
         : [`${err.message ?? error}`];
 
       for (const line of lines) {
-        output += `\n${YELLOW}[LightTodo]  ↳ ${line.trim()}${RESET}`;
+        output += `\n${YELLOW}[SnapTodo]  ↳ ${line.trim()}${RESET}`;
       }
     }
 

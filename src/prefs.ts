@@ -1,5 +1,5 @@
 /**
- * prefs.ts — Light Todo Preferences
+ * prefs.ts — Snap Todo Preferences
  *
  * Runs in a separate GTK4/Adwaita process.
  * Debug: journalctl -f -o cat /usr/bin/gjs
@@ -10,7 +10,7 @@ import Gtk from "gi://Gtk";
 import Gio from "gi://Gio";
 import { ExtensionPreferences } from "resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js";
 
-export default class LightTodoPreferences extends ExtensionPreferences {
+export default class SnapTodoPreferences extends ExtensionPreferences {
 
   override fillPreferencesWindow(window: Adw.PreferencesWindow): Promise<void> {
     const settings = this.getSettings();
@@ -25,14 +25,14 @@ export default class LightTodoPreferences extends ExtensionPreferences {
     // ── Group: Appearance ───────────────────────────────────────────────────
     const appearanceGroup = new Adw.PreferencesGroup({
       title: "Appearance",
-      description: "Configure how Light Todo appears in your panel",
+      description: "Configure how Snap Todo appears in your panel",
     });
     page.add(appearanceGroup);
 
     // NEW: Toggle to show/hide the top bar indicator entirely
     const showIndicatorRow = new Adw.SwitchRow({
       title: "Show Panel Indicator",
-      subtitle: "Display the Light Todo button in the top bar",
+      subtitle: "Display the Snap Todo button in the top bar",
     });
     settings.bind("show-indicator", showIndicatorRow, "active", Gio.SettingsBindFlags.DEFAULT);
     appearanceGroup.add(showIndicatorRow);
@@ -259,10 +259,11 @@ export default class LightTodoPreferences extends ExtensionPreferences {
     });
     window.add(aboutPage);
 
-    const aboutGroup = new Adw.PreferencesGroup({ title: "Light Todo" });
+    const aboutGroup = new Adw.PreferencesGroup({ title: "Snap Todo" });
     aboutPage.add(aboutGroup);
     aboutGroup.add(new Adw.ActionRow({ title: "Version", subtitle: "1.0.0" }));
-    aboutGroup.add(new Adw.ActionRow({ title: "Author", subtitle: "Your Name" }));
+    aboutGroup.add(new Adw.ActionRow({ title: "Author", subtitle: "Lorens Osman" }));
+    aboutGroup.add(new Adw.ActionRow({ title: "Email", subtitle: "lorens.osman.dev@gmail.com" }));
 
     return Promise.resolve();
   }

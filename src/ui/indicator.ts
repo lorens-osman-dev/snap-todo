@@ -24,8 +24,8 @@ import { PopupMenu } from "resource:///org/gnome/shell/ui/popupMenu.js";
 
 // ─── Registration ─────────────────────────────────────────────────────────────
 
-export const LightTodoIndicator = GObject.registerClass(
-  class LightTodoIndicator extends PanelMenu.Button {
+export const SnapTodoIndicator = GObject.registerClass(
+  class SnapTodoIndicator extends PanelMenu.Button {
 
     // ─── Private State ────────────────────────────────────────────────────────
 
@@ -50,7 +50,7 @@ export const LightTodoIndicator = GObject.registerClass(
       drawer: TodoDrawer,
       extension: Extension,
     ) {
-      super(0.0, "Light Todo", false);
+      super(0.0, "Snap Todo", false);
       this._settings = settings;
       this._service = service;
       this._drawer = drawer;

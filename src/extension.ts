@@ -1,5 +1,5 @@
 /**
- * extension.ts — LightTodo Extension Entry Point
+ * extension.ts — SnapTodo Extension Entry Point
  *
  * Responsibility:
  *   - Instantiate all subsystems in enable()
@@ -25,16 +25,16 @@ import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
 
 import { Logger } from "./core/logger.js";
 import { TodosService } from "./services/todosService.js";
-import { LightTodoIndicator } from "./ui/indicator.js";
+import { SnapTodoIndicator } from "./ui/indicator.js";
 import { TodoDrawer } from "./ui/drawer.js";
 
 // ─── Extension Class ──────────────────────────────────────────────────────────
 
-export default class LightTodoExtension extends Extension {
+export default class SnapTodoExtension extends Extension {
 
   // ─── Owned subsystems ─────────────────────────────────────────────────────
 
-  private _indicator: InstanceType<typeof LightTodoIndicator> | null = null;
+  private _indicator: InstanceType<typeof SnapTodoIndicator> | null = null;
   private _drawer: TodoDrawer | null = null;
   private _service: TodosService | null = null;
   private _settings: Gio.Settings | null = null;
@@ -47,7 +47,7 @@ export default class LightTodoExtension extends Extension {
       this._settings = this.getSettings() as unknown as Gio.Settings;
       this._service = new TodosService(this._settings);
       this._drawer = new TodoDrawer(this._service, this);
-      this._indicator = new LightTodoIndicator(
+      this._indicator = new SnapTodoIndicator(
         this._settings,
         this._service,
         this._drawer,

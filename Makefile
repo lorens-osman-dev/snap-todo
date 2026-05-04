@@ -1,4 +1,4 @@
-# Makefile — Light Todo GNOME Extension
+# Makefile — Snap Todo GNOME Extension
 #
 # Targets:
 #   make          → compile TypeScript → dist/
@@ -8,7 +8,7 @@
 #   make schema   → compile GSettings schema only
 #   make test     → launch nested Wayland GNOME Shell session for testing
 
-UUID      := light-todo@gjs.guide
+UUID      := snap-todo@lorens.com
 DIST      := dist
 INSTALL   := $(HOME)/.local/share/gnome-shell/extensions/$(UUID)
 TSC       := node_modules/.bin/tsc
@@ -33,7 +33,7 @@ $(DIST)/extension.js $(DIST)/prefs.js: $(TS_SOURCES) tsconfig.json
 .PHONY: schema
 schema: schemas/gschemas.compiled
 
-schemas/gschemas.compiled: schemas/org.gnome.shell.extensions.light-todo.gschema.xml
+schemas/gschemas.compiled: schemas/org.gnome.shell.extensions.snap-todo.gschema.xml
 	glib-compile-schemas schemas/
 
 # ── Install ───────────────────────────────────────────────────────────────────
@@ -73,7 +73,7 @@ pack: build schema
 # GNOME 45-48: uses --nested
 #
 # After the window appears, open a terminal INSIDE it and run:
-#   gnome-extensions enable light-todo@gjs.guide
+#   gnome-extensions enable snap-todo@lorens.com
 
 .PHONY: test
 test: install
@@ -83,7 +83,7 @@ test: install
 	@echo ""
 	MUTTER_DEBUG_DUMMY_MODE_SPECS="1280x720" \
 	G_MESSAGES_DEBUG=all \
-	dbus-run-session gnome-shell --nested --wayland 2>&1 | grep  --line-buffered "LightTodo"
+	dbus-run-session gnome-shell --nested --wayland 2>&1 | grep  --line-buffered "SnapTodo"
 
 # For GNOME 49+, use devkit instead:
 .PHONY: test-devkit
@@ -94,7 +94,7 @@ test-devkit: install
 	@echo ""
 	MUTTER_DEBUG_DUMMY_MODE_SPECS="1280x720" \
 	G_MESSAGES_DEBUG=all \
-	dbus-run-session gnome-shell --devkit --wayland 2>&1 | grep  --line-buffered "LightTodo"
+	dbus-run-session gnome-shell --devkit --wayland 2>&1 | grep  --line-buffered "SnapTodo"
 
 # ── Logs ──────────────────────────────────────────────────────────────────────
 

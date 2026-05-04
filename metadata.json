@@ -1,13 +1,13 @@
 {
-  "name": "Light Todo",
-  "description": "A lightweight, distraction-free todo list in your GNOME panel",
-  "uuid": "light-todo@gjs.guide",
+  "name": "Snap Todo",
+  "description": "A snapweight, distraction-free todo list in your GNOME panel",
+  "uuid": "snap-todo@lorens.com",
   "shell-version": [
     "45",
     "46",
     "47"
   ],
-  "url": "https://github.com/yourname/light-todo",
-  "settings-schema": "org.gnome.shell.extensions.light-todo",
-  "gettext-domain": "light-todo@gjs.guide"
+  "url": "https://github.com/yourname/snap-todo",
+  "settings-schema": "org.gnome.shell.extensions.snap-todo",
+  "gettext-domain": "snap-todo@lorens.com"
 }

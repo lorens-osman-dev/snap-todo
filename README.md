@@ -29,13 +29,49 @@ Snap-todo features a completely mouse-free architecture. Every UI interaction is
 
 
 
----
+
 ## ⚡ 3. Dual UI Modes
 Choose the layout that fits your workflow.
 
 1. Normal Menu: A traditional, lightweight dropdown menu attached directly to your top bar.
 
 2. Slide-out Drawer: A modern, full-height Wayland-native side panel that slides in for maximum screen real estate.
+
+
+Note : Click on the features to see screenshots for each feature.
+<br>
+
+<details>
+   <summary>1. `Normal Menu`: A traditional, lightweight dropdown menu attached directly to your top bar.</summary>
+
+  <ul>
+    <li>
+     <details>
+      <summary>Light Mode</summary>
+        <p>
+            <ul>
+              <p align="center"> <img src="assets/menu-light.png"></p>
+            </ul>
+        </p>
+      </details>
+    </li>
+  </ul>
+
+  <ul>
+    <li>
+     <details>
+      <summary>Dark Mode</summary>
+        <p>
+            <ul>
+              <p align="center"> <img src="assets/menu-dark.png" style="height: 420px !important;width: 220px !important;"></p>
+            </ul>
+        </p>
+      </details>
+    </li>
+  </ul>
+
+</details>
+
 
 ## Installation
 

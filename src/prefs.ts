@@ -1,5 +1,5 @@
 /**
- * prefs.ts — Light Todo Preferences
+ * prefs.ts — Snap Todo Preferences
  *
  * Runs in a separate GTK4/Adwaita process.
  * Debug: journalctl -f -o cat /usr/bin/gjs
@@ -10,7 +10,7 @@ import Gtk from "gi://Gtk";
 import Gio from "gi://Gio";
 import { ExtensionPreferences } from "resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js";
 
-export default class LightTodoPreferences extends ExtensionPreferences {
+export default class SnapTodoPreferences extends ExtensionPreferences {
 
   override fillPreferencesWindow(window: Adw.PreferencesWindow): Promise<void> {
     const settings = this.getSettings();
@@ -25,14 +25,14 @@ export default class LightTodoPreferences extends ExtensionPreferences {
     // ── Group: Appearance ───────────────────────────────────────────────────
     const appearanceGroup = new Adw.PreferencesGroup({
       title: "Appearance",
-      description: "Configure how Light Todo appears in your panel",
+      description: "Configure how Snap Todo appears in your panel",
     });
     page.add(appearanceGroup);
 
     // NEW: Toggle to show/hide the top bar indicator entirely
     const showIndicatorRow = new Adw.SwitchRow({
       title: "Show Panel Indicator",
-      subtitle: "Display the Light Todo button in the top bar",
+      subtitle: "Display the Snap Todo button in the top bar",
     });
     settings.bind("show-indicator", showIndicatorRow, "active", Gio.SettingsBindFlags.DEFAULT);
     appearanceGroup.add(showIndicatorRow);
@@ -128,7 +128,6 @@ export default class LightTodoPreferences extends ExtensionPreferences {
 
     behaviorGroup.add(shortcutRow);
 
-
     // ── Group: Data ─────────────────────────────────────────────────────────
     const dataGroup = new Adw.PreferencesGroup({
       title: "Data",
@@ -136,27 +135,55 @@ export default class LightTodoPreferences extends ExtensionPreferences {
     });
     page.add(dataGroup);
 
-    // Clear completed
-    const clearRow = new Adw.ActionRow({
-      title: "Clear Completed Todos",
-      subtitle: "Remove all completed items from your list",
+    // ── 1. Uncheck Completed (Safe Action) ──
+    const uncheckRow = new Adw.ActionRow({
+      title: "Mark Completed as Active",
+      subtitle: "Move all completed items back to your regular list",
     });
-    const clearBtn = new Gtk.Button({
-      label: "Clear",
+    const uncheckBtn = new Gtk.Button({
+      label: "Uncheck",
       valign: Gtk.Align.CENTER,
-      css_classes: ["destructive-action"],
+      // Removed "destructive-action" so it renders as a neutral, standard Adwaita button
     });
-    clearBtn.connect("clicked", () => {
+    uncheckBtn.connect("clicked", () => {
       settings.set_strv("completed", []);
-      window.add_toast(new Adw.Toast({ title: "Completed todos cleared" }));
+      window.add_toast(new Adw.Toast({ title: "Completed items moved to active" }));
     });
-    clearRow.add_suffix(clearBtn as unknown as Gtk.Widget);
-    dataGroup.add(clearRow);
+    uncheckRow.add_suffix(uncheckBtn as unknown as Gtk.Widget);
+    dataGroup.add(uncheckRow);
 
-    // Reset all
+    // ── 2. Delete Completed (Destructive Action) ──
+    const deleteCompletedRow = new Adw.ActionRow({
+      title: "Delete Completed Todos",
+      subtitle: "Permanently remove all completed items from your list",
+    });
+    const deleteCompletedBtn = new Gtk.Button({
+      label: "Delete",
+      valign: Gtk.Align.CENTER,
+      css_classes: ["destructive-action"], // Standard Adwaita red warning style
+    });
+    deleteCompletedBtn.connect("clicked", () => {
+      const todos = settings.get_strv("todos");
+      const completed = settings.get_strv("completed");
+      const pinned = settings.get_strv("pinned");
+
+      // Filter the underlying arrays to physically purge completed items
+      const newTodos = todos.filter(t => !completed.includes(t));
+      const newPinned = pinned.filter(t => !completed.includes(t));
+
+      settings.set_strv("todos", newTodos);
+      settings.set_strv("pinned", newPinned);
+      settings.set_strv("completed", []);
+
+      window.add_toast(new Adw.Toast({ title: "Completed todos permanently deleted" }));
+    });
+    deleteCompletedRow.add_suffix(deleteCompletedBtn as unknown as Gtk.Widget);
+    dataGroup.add(deleteCompletedRow);
+
+    // ── 3. Reset All Data (Destructive Action) ──
     const resetRow = new Adw.ActionRow({
-      title: "Reset All Data",
-      subtitle: "Delete all todos — this cannot be undone",
+      title: "Delete All Todos",
+      subtitle: "This cannot be undone",
     });
     const resetBtn = new Gtk.Button({
       label: "Reset",
@@ -166,10 +193,64 @@ export default class LightTodoPreferences extends ExtensionPreferences {
     resetBtn.connect("clicked", () => {
       settings.set_strv("todos", []);
       settings.set_strv("completed", []);
-      window.add_toast(new Adw.Toast({ title: "All todos deleted" }));
+      settings.set_strv("pinned", []); // CLEANUP: Ensure pinned array is also wiped
+      window.add_toast(new Adw.Toast({ title: "All data deleted" }));
     });
     resetRow.add_suffix(resetBtn as unknown as Gtk.Widget);
     dataGroup.add(resetRow);
+
+    // ── Group: Advanced ─────────────────────────────────────────────────────
+    const advancedGroup = new Adw.PreferencesGroup({
+      title: "Advanced",
+      description: "Extension configuration management",
+    });
+    page.add(advancedGroup);
+
+    const resetPrefsRow = new Adw.ActionRow({
+      title: "Restore Default Settings",
+      subtitle: "Reset all toggles, shortcuts, and layout options to their original values. Your todos will not be deleted.",
+    });
+
+    const resetPrefsBtn = new Gtk.Button({
+      label: "Restore",
+      valign: Gtk.Align.CENTER,
+      // Destructive class used to warn the user that their customized UI config will be lost
+      css_classes: ["destructive-action"],
+    });
+
+    resetPrefsBtn.connect("clicked", () => {
+      // Define the keys that hold actual user data to protect them from the reset
+      const dataKeys = ["todos", "completed", "pinned"];
+
+      // 1. Reset the underlying schema values
+      settings.list_keys().forEach(key => {
+        if (!dataKeys.includes(key)) {
+          settings.reset(key);
+        }
+      });
+
+      // ── 2. SYNC UNBOUND UI ELEMENTS ──
+      // SwitchRows use settings.bind() and update automatically. 
+      // ComboRows use manual mapping, so we must force them to re-read the defaults.
+
+      const posMap: Record<string, number> = { left: 0, center: 1, right: 2 };
+      positionRow.set_selected(posMap[settings.get_string("panel-position")] ?? 2);
+
+      const modMap: Record<string, number> = { alt: 0, ctrl: 1, shift: 2 };
+      modifierRow.set_selected(modMap[settings.get_string("drag-modifier")] ?? 0);
+
+      const currentShortcut = settings.get_strv("toggle-shortcut")[0] ?? "<Alt>t";
+      const shortcutIndex = shortcutOptions.findIndex(opt => opt.value === currentShortcut);
+      shortcutRow.set_selected(Math.max(0, shortcutIndex));
+
+      // 3. Notify the user
+      window.add_toast(new Adw.Toast({ title: "Settings restored to defaults" }));
+    });
+
+    resetPrefsRow.add_suffix(resetPrefsBtn as unknown as Gtk.Widget);
+    advancedGroup.add(resetPrefsRow);
+
+
 
     // ── Page: About ─────────────────────────────────────────────────────────
     const aboutPage = new Adw.PreferencesPage({
@@ -178,10 +259,11 @@ export default class LightTodoPreferences extends ExtensionPreferences {
     });
     window.add(aboutPage);
 
-    const aboutGroup = new Adw.PreferencesGroup({ title: "Light Todo" });
+    const aboutGroup = new Adw.PreferencesGroup({ title: "Snap Todo" });
     aboutPage.add(aboutGroup);
     aboutGroup.add(new Adw.ActionRow({ title: "Version", subtitle: "1.0.0" }));
-    aboutGroup.add(new Adw.ActionRow({ title: "Author", subtitle: "Your Name" }));
+    aboutGroup.add(new Adw.ActionRow({ title: "Author", subtitle: "Lorens Osman" }));
+    aboutGroup.add(new Adw.ActionRow({ title: "Email", subtitle: "lorens.osman.dev@gmail.com" }));
 
     return Promise.resolve();
   }

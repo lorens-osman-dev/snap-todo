@@ -1,4 +1,4 @@
-/* stylesheet.css — Light Todo Extension
+/* stylesheet.css — Snap Todo Extension
  *
  * St CSS is a strict subset of CSS.
  * NOT supported: var(), calc() on colors, darken()/lighten()/alpha(),
@@ -30,7 +30,9 @@
 }
 
 .todo-label {
-  font-size: 13px;
+  font-size: 11px;
+  /* Enforce a geometric boundary to trigger the Pango ellipsis */
+  max-width: 300px; 
 }
 
 .todo-label-done {
@@ -165,6 +167,8 @@
 
 /* ── Drag and Drop ────────────────────────────────────────── */
 
+/* ── Drag and Drop ────────────────────────────────────────── */
+
 .todo-drag-btn {
   width: 24px;
   height: 24px;
@@ -184,16 +188,44 @@
   icon-size: 14px;
 }
 
-/* The floating actor that follows the mouse pointer */
+/* The floating clone that follows the mouse pointer */
 .todo-drag-actor {
-  background-color: rgba(128, 128, 128, 0.9);
-  color: #ffffff;
-  padding: 4px 12px;
+  padding: 6px 12px;
   border-radius: 6px;
   border: 1px solid #4a90d9;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  spacing: 8px; 
+  /* CRITICAL: Do not use box-shadow or rgba() transparencies here. 
+     Solid backgrounds prevent Wayland compositor smearing artifacts. */
 }
 
+/* Explicit Dark Theme for the global DND layer */
+.todo-drag-actor.todo-dark-theme {
+  background-color: #242424;
+  color: #ffffff;
+}
+
+/* Explicit Snap Theme for the global DND layer */
+.todo-drag-actor.todo-light-theme {
+  background-color: #ffffff;
+  color: #242424;
+}
+
+/* Ensure the drag handle icon adapts its color to the theme */
+.todo-drag-actor.todo-dark-theme .todo-drag-icon {
+  color: #cccccc;
+}
+
+.todo-drag-actor.todo-light-theme .todo-drag-icon {
+  color: #666666;
+}
+
+/* Valid drop target row indicator */
+.todo-drop-target {
+  background-color: rgba(74, 144, 217, 0.15) !important;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 2px #4a90d9;
+  transition-duration: 100ms;
+}
 /* ── Pin button ───────────────────────────────────────────── */
 
 .todo-pin-btn {
@@ -218,7 +250,7 @@
 /* ── Keyboard Modifier Held State ─────────────────────────── */
 
 .todo-item-modifier-held {
-  /* Light yellow background with transparency to play nice with dark/light themes */
+  /* Snap yellow background with transparency to play nice with dark/light themes */
   background-color: rgba(255, 235, 59, 0.15) !important;
   border-radius: 6px;
   transition-duration: 100ms;
@@ -328,6 +360,10 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   text-align: center;
+  
+  /* ── STRICT GEOMETRY BOUNDARY ── */
+  /* Forces the tooltip to stop expanding and triggers Pango wrapping */
+  max-width: 280px; 
 }
 
 
@@ -360,9 +396,67 @@
   /* Invisible until opened, but captures clicks when active */
 }
 
+/* Base styles: structural geometry only */
 .todo-drawer {
-  background-color: rgba(30, 30, 30, 0.98);
-  border-left: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: -4px 0 24px rgba(0, 0, 0, 0.6);
   padding: 12px;
+}
+
+.todo-drawer-title {
+  font-weight: bold; 
+}
+
+/* ── Dark Theme Overrides ── */
+.todo-dark-theme.todo-drawer {
+  background-color: rgba(30, 30, 30, 0.98);
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.todo-dark-theme .todo-drawer-title {
+  color: #ffffff;
+}
+
+/* ── Snap Theme Overrides ── */
+.todo-light-theme.todo-drawer {
+  background-color: rgba(250, 250, 250, 0.98);
+  border-left: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.todo-light-theme .todo-drawer-title {
+  color: #242424;
+}
+
+.todo-drawer-completed-header-focused {
+  background-color: rgba(128, 128, 128, 0.15);
+  box-shadow: inset 0 0 0 1px #4a90d9; /* Adwaita blue focus ring */
+}
+
+.todo-drawer-completed-header {
+ margin-top: 2px;
+ margin-bottom: 2px;
+     padding-top: 5px;
+    padding-bottom: 5px;
+}
+.todo-drawer-completed-header:hover {
+    background-color: rgba(128, 128, 128, 0.15);
+}
+
+.todo-header-icon-drawer{
+  margin-left:10px ;
+  font-size: 14px;
+}
+
+
+
+.focused-blue-border {
+ box-shadow: inset 0 0 0 1px #4a90d9;
+  outline: none;
+}
+
+/* ── Actions View Active State ────────────────────────────── */
+
+.todo-item-actions-active {
+  background-color: rgba(74, 217, 84, 0.15) !important;
+  border-radius: 6px;
+  transition-duration: 100ms;
 }

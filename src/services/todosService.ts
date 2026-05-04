@@ -1,119 +1,182 @@
 /**
- * features/todosService.ts
+ * services/todosService.ts — Data Layer
  *
  * Responsibility:
- * - Abstracts all read/write operations for GSettings data (todos, pinned, completed).
- * - Validates data operations (e.g., checking for duplicates).
- * - Exposes UI-intent properties (nextFocusText) so the UI knows where to place 
- * focus after a data mutation triggers a redraw.
+ *   - Single source of truth for reading/writing todos, completed, pinned
+ *   - All GSettings access is centralised here
+ *   - Provides typed methods instead of raw strv calls scattered across UI code
  *
  * Does NOT:
- * - Touch Clutter or St actors.
- * - Draw UI.
+ *   - Touch any Clutter/St/UI code
+ *   - Emit GObject signals (that's the UI layer's job)
+ *
+ * Usage:
+ *   const svc = new TodosService(settings);
+ *   svc.add("Buy milk");
+ *   svc.toggle("Buy milk");
+ *   svc.reorderStep("Buy milk", -1);
  */
 
 import Gio from "gi://Gio";
-// import logger from "../core/logger.js"; // Assume extracted logger
+import { Logger } from "../core/logger.js";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface TodoSnapshot {
+  todos: string[];
+  completed: string[];
+  pinned: string[];
+}
+
+// ─── Service ─────────────────────────────────────────────────────────────────
 
 export class TodosService {
   private _settings: Gio.Settings;
 
-  // ─── UI Intent State ───────────────────────────────────────────────────────
-  // Holds data on which item the UI should focus after a rebuild occurs.
+  /**
+   * The text of the item that should receive keyboard focus after the next
+   * list rebuild.  Set by toggle() / reorderStep(); consumed and cleared by
+   * TodoListRenderer after each render().
+   */
   public nextFocusText: string | null = null;
+
+  /**
+   * Whether the focused item should also receive the yellow "modifier held"
+   * highlight after the next rebuild (used during keyboard reordering).
+   */
   public keepHighlight: boolean = false;
 
   constructor(settings: Gio.Settings) {
     this._settings = settings;
   }
 
-  // ─── Data Accessors ────────────────────────────────────────────────────────
+  // ─── UI Preference Reads ─────────────────────────────────────────────────
+  // Centralised here so TodoListRenderer never touches _settings directly.
 
-  public getTodos(): string[] { return this._settings.get_strv("todos"); }
-  public getCompleted(): string[] { return this._settings.get_strv("completed"); }
-  public getPinned(): string[] { return this._settings.get_strv("pinned"); }
+  getShowCompleted(): boolean { return this._settings.get_boolean("show-completed"); }
+  getUseDrawer(): boolean { return this._settings.get_boolean("use-drawer"); }
 
-  public getShowCompleted(): boolean { return this._settings.get_boolean("show-completed"); }
-  public getUseDrawer(): boolean { return this._settings.get_boolean("use-drawer"); }
+  // ─── Primitive Reads ────────────────────────────────────────────────────────
 
-  // ─── Data Mutations ────────────────────────────────────────────────────────
+  getTodos(): string[] { return this._settings.get_strv("todos"); }
+  getCompleted(): string[] { return this._settings.get_strv("completed"); }
+  getPinned(): string[] { return this._settings.get_strv("pinned"); }
 
-  public addTodo(text: string): boolean {
+  /** Convenience snapshot — call once per operation to avoid multiple reads */
+  snapshot(): TodoSnapshot {
+    return {
+      todos: this.getTodos(),
+      completed: this.getCompleted(),
+      pinned: this.getPinned(),
+    };
+  }
+
+  // ─── Derived Reads ──────────────────────────────────────────────────────────
+
+  getActiveTodos(): string[] {
+    const { todos, completed } = this.snapshot();
+    return todos.filter(t => !completed.includes(t));
+  }
+
+  getCompletedTodos(): string[] {
+    const { todos, completed } = this.snapshot();
+    return todos.filter(t => completed.includes(t));
+  }
+
+  isCompleted(text: string): boolean {
+    return this.getCompleted().includes(text);
+  }
+
+  isPinned(text: string): boolean {
+    return this.getPinned().includes(text);
+  }
+
+  /**
+   * Returns todos sorted by pin status (pinned first) in display order.
+   * This is the canonical order used by both the menu and the drawer.
+   */
+  getSortedTodos(): string[] {
+    const { todos, pinned } = this.snapshot();
+    return [...todos].sort((a, b) => {
+      const aP = pinned.includes(a);
+      const bP = pinned.includes(b);
+      if (aP && !bP) return -1;
+      if (!aP && bP) return 1;
+      return 0;
+    });
+  }
+
+  // ─── Mutations ──────────────────────────────────────────────────────────────
+
+  /**
+   * Add a new todo. No-ops silently on empty or duplicate text.
+   * Returns true if the item was actually added.
+   */
+  add(text: string): boolean {
     if (!text) return false;
-
     const todos = this.getTodos();
     if (todos.includes(text)) {
-      log(`Attempted to add duplicate todo -> "${text}"`);
+      Logger.info(`Attempted to add duplicate todo → "${text}"`);
       return false;
     }
-
-    log(`Successfully added todo -> "${text}"`);
     this._settings.set_strv("todos", [...todos, text]);
+    Logger.info(`Added todo → "${text}"`);
     return true;
   }
 
-  public deleteTodo(text: string): void {
+  /**
+     * Remove a todo from all lists (todos, completed, pinned).
+     * Calculates nextFocusText so the renderer can restore keyboard focus
+     * to the logical successor after the item's Clutter actor is destroyed.
+     */
+  delete(text: string): void {
+    // ─── Spatial Focus Calculation ───
+    // Before removing the data, determine which item is visually adjacent 
+    // to it so we can hand off keyboard focus after the UI rebuilds.
+    const { completed } = this.snapshot();
+    const isCurrentlyCompleted = completed.includes(text);
+
+    // Reconstruct the visual order of whichever list the item currently lives in
+    let visual = this.getSortedTodos();
+    visual = isCurrentlyCompleted
+      ? visual.filter(t => completed.includes(t))
+      : visual.filter(t => !completed.includes(t));
+
+    const idx = visual.indexOf(text);
+
+    // Pick the next item if available, otherwise fall back to the previous item
+    this.nextFocusText =
+      idx !== -1 && idx + 1 < visual.length ? visual[idx + 1] :
+        idx !== -1 && idx - 1 >= 0 ? visual[idx - 1] :
+          null;
+
+    // ─── Data Mutation ───
     this._settings.set_strv("todos", this.getTodos().filter(t => t !== text));
     this._settings.set_strv("completed", this.getCompleted().filter(t => t !== text));
     this._settings.set_strv("pinned", this.getPinned().filter(t => t !== text));
   }
 
-  public editTodo(oldText: string, newText: string): void {
-    const todos = this.getTodos();
-
-    if (todos.includes(newText) && oldText !== newText) {
-      log(`Cannot rename to "${newText}": already exists.`);
-      return; // A real app might throw an error or return a result enum here
-    }
-
-    const newTodos = todos.map(t => t === oldText ? newText : t);
-    this._settings.set_strv("todos", newTodos);
-
-    const pinned = this.getPinned();
-    if (pinned.includes(oldText)) {
-      this._settings.set_strv("pinned", pinned.map(t => t === oldText ? newText : t));
-    }
-
-    const completed = this.getCompleted();
-    if (completed.includes(oldText)) {
-      this._settings.set_strv("completed", completed.map(t => t === oldText ? newText : t));
-    }
-  }
-
-  public toggleTodo(text: string): void {
-    const todos = this.getTodos();
-    const completed = this.getCompleted();
-    const pinned = this.getPinned();
-
+  /**
+   * Toggle the completed state of a todo.
+   * Also calculates and stores nextFocusText so the renderer can restore
+   * keyboard focus to the logical successor after the list rebuilds.
+   */
+  toggle(text: string): void {
+    const { completed } = this.snapshot();
     const isCurrentlyCompleted = completed.includes(text);
 
-    // Calculate visual order to determine next focus
-    let visualList = [...todos].sort((a, b) => {
-      const aPinned = pinned.includes(a);
-      const bPinned = pinned.includes(b);
-      if (aPinned && !bPinned) return -1;
-      if (!aPinned && bPinned) return 1;
-      return 0;
-    });
+    // Reconstruct the visual order of whichever list the item currently lives in
+    let visual = this.getSortedTodos();
+    visual = isCurrentlyCompleted
+      ? visual.filter(t => completed.includes(t))
+      : visual.filter(t => !completed.includes(t));
 
-    if (isCurrentlyCompleted) {
-      visualList = visualList.filter(t => completed.includes(t));
-    } else {
-      visualList = visualList.filter(t => !completed.includes(t));
-    }
+    const idx = visual.indexOf(text);
+    this.nextFocusText =
+      idx !== -1 && idx + 1 < visual.length ? visual[idx + 1] :
+        idx !== -1 && idx - 1 >= 0 ? visual[idx - 1] :
+          null;
 
-    const currentIndex = visualList.indexOf(text);
-    this.nextFocusText = null;
-
-    if (currentIndex !== -1) {
-      if (currentIndex + 1 < visualList.length) {
-        this.nextFocusText = visualList[currentIndex + 1];
-      } else if (currentIndex - 1 >= 0) {
-        this.nextFocusText = visualList[currentIndex - 1];
-      }
-    }
-
-    // Toggle logic
     if (isCurrentlyCompleted) {
       this._settings.set_strv("completed", completed.filter(t => t !== text));
     } else {
@@ -121,7 +184,29 @@ export class TodosService {
     }
   }
 
-  public togglePin(text: string): void {
+  /**
+   * Rename a todo in all lists. No-ops if newText already exists (collision).
+   * Returns true if the rename succeeded.
+   */
+  rename(oldText: string, newText: string): boolean {
+    if (!newText || newText === oldText) return false;
+    if (this.getTodos().includes(newText)) {
+      Logger.info(`Cannot rename to "${newText}": already exists.`);
+      return false;
+    }
+
+    const replace = (arr: string[]) => arr.map(t => t === oldText ? newText : t);
+
+    this._settings.set_strv("todos", replace(this.getTodos()));
+    this._settings.set_strv("completed", replace(this.getCompleted()));
+    this._settings.set_strv("pinned", replace(this.getPinned()));
+    return true;
+  }
+
+  /**
+   * Toggle pin status for a todo.
+   */
+  togglePin(text: string): void {
     const pinned = this.getPinned();
     if (pinned.includes(text)) {
       this._settings.set_strv("pinned", pinned.filter(t => t !== text));
@@ -130,69 +215,110 @@ export class TodosService {
     }
   }
 
-  public moveTodo(sourceText: string, targetText: string): void {
-    const todos = this.getTodos();
-    const sourceIndex = todos.indexOf(sourceText);
-    const targetIndex = todos.indexOf(targetText);
+  /**
+     * Move sourceText to the position currently occupied by targetText
+     * (drag-and-drop reorder).
+     */
+  reorder(sourceText: string, targetText: string): void {
+    const todos = [...this.getTodos()];
+    const srcIdx = todos.indexOf(sourceText);
+    const tgtIdx = todos.indexOf(targetText);
 
-    if (sourceIndex === -1 || targetIndex === -1 || sourceIndex === targetIndex) return;
+    if (srcIdx === -1 || tgtIdx === -1 || srcIdx === tgtIdx) return;
 
-    todos.splice(sourceIndex, 1);
-    const newTargetIndex = todos.indexOf(targetText);
-    todos.splice(newTargetIndex, 0, sourceText);
+    // 1. Remove the dragged item from its original position
+    todos.splice(srcIdx, 1);
 
-    log(`Moved "${sourceText}" to index ${newTargetIndex}`);
+    // 2. Insert it exactly at the original target index.
+    // Why this works natively:
+    // - Dragging UP: Removing the source doesn't change the target's index. 
+    //   Inserting at tgtIdx pushes the target down 1 slot.
+    // - Dragging DOWN: Removing the source shifts the target left by 1 slot.
+    //   Inserting at the original tgtIdx places the source perfectly AFTER the target.
+    todos.splice(tgtIdx, 0, sourceText);
+
+    Logger.info(`Moved "${sourceText}" to index ${tgtIdx}`);
     this._settings.set_strv("todos", todos);
   }
 
-  public moveTodoStep(text: string, direction: number, keepHighlight: boolean): void {
-    const todos = this.getTodos();
-    const pinned = this.getPinned();
-    const completed = this.getCompleted();
+  /**
+     * Move a todo one step up (direction=-1) or down (direction=1) in the
+     * visual (sorted) list.
+     *
+     * Stores nextFocusText + keepHighlight on the service so the renderer can
+     * restore keyboard focus to the moved item after the rebuild.
+     * Returns false if the move was not possible (already at boundary).
+     */
+  reorderStep(
+    text: string,
+    direction: number,
+    keepHighlight: boolean,
+  ): boolean {
+    const { todos, completed, pinned } = this.snapshot();
     const showCompleted = this.getShowCompleted();
 
-    let visualTodos = [...todos].sort((a, b) => {
-      const aPinned = pinned.includes(a);
-      const bPinned = pinned.includes(b);
-      if (aPinned && !bPinned) return -1;
-      if (!aPinned && bPinned) return 1;
+    let visual = [...todos].sort((a, b) => {
+      const aP = pinned.includes(a);
+      const bP = pinned.includes(b);
+      if (aP && !bP) return -1;
+      if (!aP && bP) return 1;
       return 0;
     });
 
     if (!showCompleted) {
-      visualTodos = visualTodos.filter(t => !completed.includes(t));
+      visual = visual.filter(t => !completed.includes(t));
     }
 
-    const index = visualTodos.indexOf(text);
-    if (index === -1) return;
+    const idx = visual.indexOf(text);
+    if (idx === -1) return false;
 
-    const targetIndex = index + direction;
-    if (targetIndex < 0 || targetIndex >= visualTodos.length) return;
+    const targetIdx = idx + direction;
+    if (targetIdx < 0 || targetIdx >= visual.length) return false;
 
-    const targetText = visualTodos[targetIndex];
+    const targetText = visual[targetIdx];
 
-    const mainTodos = [...todos];
-    const idx1 = mainTodos.indexOf(text);
-    const idx2 = mainTodos.indexOf(targetText);
+    // ─── STRICT BOUNDARY ENFORCEMENT ───
+    // Prevent keyboard reordering from implicitly changing pin state.
+    // This ensures 1:1 parity with the pointer DND logic, which strictly
+    // rejects drops that cross the pinned/unpinned boundary.
+    const srcPinned = pinned.includes(text);
+    const tgtPinned = pinned.includes(targetText);
 
-    mainTodos[idx1] = targetText;
-    mainTodos[idx2] = text;
-
-    // Handle pin inheritance
-    const isTargetPinned = pinned.includes(targetText);
-    const isSourcePinned = pinned.includes(text);
-
-    if (isTargetPinned !== isSourcePinned) {
-      let newPinned = [...pinned];
-      if (isTargetPinned) newPinned.push(text);
-      else newPinned = newPinned.filter(p => p !== text);
-      this._settings.set_strv("pinned", newPinned);
+    if (srcPinned !== tgtPinned) {
+      return false; // Hit the boundary wall, halt the move
     }
 
-    // Inform UI to maintain focus
+    // ─── Reorder Row Data ───
+    // Extract and splice into the raw array to persist the new visual placement,
+    // avoiding parity lock when crossing pin boundaries.
+    const newTodos = [...todos];
+    newTodos.splice(newTodos.indexOf(text), 1);
+
+    const targetRawIdx = newTodos.indexOf(targetText);
+
+    // Insert after the target if moving down, or before the target if moving up
+    if (direction === 1) {
+      newTodos.splice(targetRawIdx + 1, 0, text);
+    } else {
+      newTodos.splice(targetRawIdx, 0, text);
+    }
+
+    // Store focus intent — consumed by TodoListRenderer after render()
     this.nextFocusText = text;
     this.keepHighlight = keepHighlight;
 
-    this._settings.set_strv("todos", mainTodos);
+    this._settings.set_strv("todos", newTodos);
+    return true;
+  }
+
+  // ─── Bulk Operations (Preferences) ──────────────────────────────────────────
+
+  clearCompleted(): void {
+    this._settings.set_strv("completed", []);
+  }
+
+  clearAll(): void {
+    this._settings.set_strv("todos", []);
+    this._settings.set_strv("completed", []);
   }
 }

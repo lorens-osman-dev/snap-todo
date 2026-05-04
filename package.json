@@ -1,13 +1,13 @@
 {
-  "name": "light-todo",
+  "name": "snap-todo",
   "version": "1.0.0",
   "type": "module",
-  "description": "A lightweight GNOME Shell todo extension",
+  "description": "A snapweight GNOME Shell todo extension",
   "scripts": {
     "build": "make build",
     "pack": "make pack",
     "install": "make install",
-    "test": "make test",
+    "test": "make clean && make test",
     "clean": "make clean"
   },
   "devDependencies": {

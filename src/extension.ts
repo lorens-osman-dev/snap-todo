@@ -2,19 +2,19 @@
  * extension.ts — SnapTodo Extension Entry Point
  *
  * Responsibility:
- *   - Instantiate all subsystems in enable()
- *   - Tear everything down cleanly in disable()
- *   - Register the global keyboard shortcut
- *   - Move the indicator between panel boxes when the position setting changes
+ * - Instantiate all subsystems in enable()
+ * - Tear everything down cleanly in disable()
+ * - Register the global keyboard shortcut
+ * - Move the indicator between panel boxes when the position setting changes
  *
  * This file is intentionally thin. Business logic lives in:
- *   services/todosService.ts  ← data
- *   ui/indicator.ts           ← panel button + dropdown menu
- *   ui/drawer.ts              ← slide-in drawer surface
- *   ui/todoItem.ts            ← individual row widget
- *   utils/tooltip.ts          ← hover tooltips
- *   services/clipboard.ts     ← clipboard + notification
- *   core/logger.ts            ← logging
+ * services/todosService.ts  ← data
+ * ui/indicator.ts           ← panel button + dropdown menu
+ * ui/drawer.ts              ← slide-in drawer surface
+ * ui/todoItem.ts            ← individual row widget
+ * utils/tooltip.ts          ← hover tooltips
+ * services/clipboard.ts     ← clipboard + notification
+ * core/logger.ts            ← logging
  */
 
 import Meta from "gi://Meta";
@@ -38,7 +38,9 @@ export default class SnapTodoExtension extends Extension {
   private _drawer: TodoDrawer | null = null;
   private _service: TodosService | null = null;
   private _settings: Gio.Settings | null = null;
+
   private _positionChangedId: number = 0;
+  private _startupCompleteId: number = 0;
 
   // ─── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -64,26 +66,38 @@ export default class SnapTodoExtension extends Extension {
       );
       this._updatePosition();
 
-      // Global keyboard shortcut (reads the keybinding from GSettings automatically)
-      // Dynamically respects the use-drawer setting: toggles drawer when enabled,
-      // otherwise toggles the dropdown menu.
-      Main.wm.addKeybinding(
-        "toggle-shortcut",
-        this._settings,
-        Meta.KeyBindingFlags.NONE,
-        Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
-        () => {
-          if (this._settings?.get_boolean("use-drawer")) {
-            // Drawer mode: toggle the slide-out drawer
-            this._drawer?.toggle();
-          } else {
-            // Menu mode: toggle the panel dropdown menu
-            if (this._indicator?.menu) {
-              this._indicator.menu.toggle();
+      // ─── Keybinding Registration ───
+      // Explanatory Note: Mutter's key grabber may not be ready during cold login. 
+      // We wrap the registration and defer it until the Shell is completely initialized.
+      const bindShortcut = () => {
+        Main.wm.addKeybinding(
+          "toggle-shortcut",
+          this._settings!,
+          Meta.KeyBindingFlags.IGNORE_AUTOREPEAT, // Prevent UI flickering if key is held down
+          Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
+          () => {
+            if (this._settings?.get_boolean("use-drawer")) {
+              // Drawer mode: toggle the slide-out drawer
+              this._drawer?.toggle();
+            } else {
+              // Menu mode: toggle the panel dropdown menu
+              if (this._indicator?.menu) {
+                this._indicator.menu.toggle();
+              }
             }
-          }
-        },
-      );
+          },
+        );
+      };
+
+      if (Main.layoutManager._startingUp) {
+        this._startupCompleteId = Main.layoutManager.connect("startup-complete", () => {
+          bindShortcut();
+          Main.layoutManager.disconnect(this._startupCompleteId);
+          this._startupCompleteId = 0;
+        });
+      } else {
+        bindShortcut();
+      }
 
       Logger.info("enabled");
     } catch (error) {
@@ -92,6 +106,13 @@ export default class SnapTodoExtension extends Extension {
   }
 
   override disable(): void {
+    // CLEANUP: Unbind deferred startup listener to prevent memory leaks if 
+    // the extension is disabled before the shell finishes starting.
+    if (this._startupCompleteId) {
+      Main.layoutManager.disconnect(this._startupCompleteId);
+      this._startupCompleteId = 0;
+    }
+
     // Remove global shortcut first (references indicator)
     Main.wm.removeKeybinding("toggle-shortcut");
 

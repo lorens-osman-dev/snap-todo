@@ -37,6 +37,7 @@ export const SnapTodoIndicator = GObject.registerClass(
 
     // Signal connection IDs
     private _settingsChangedId: number = 0;
+    private _overviewShowingId: number = 0;
 
     // Panel actors
     private _panelLabel!: St.Label;
@@ -55,6 +56,9 @@ export const SnapTodoIndicator = GObject.registerClass(
       this._service = service;
       this._drawer = drawer;
       this._extension = extension;
+
+      // Close drawer when GNOME overview opens
+      this._overviewShowingId = Main.overview.connect("showing", () => this._drawer.close());
 
       this._buildPanel();
 
@@ -175,9 +179,17 @@ export const SnapTodoIndicator = GObject.registerClass(
       if (this._todoMenu) {
         this._todoMenu.destroy();
       }
+
+      // CLEANUP: Disconnect GSettings watchers
       if (this._settingsChangedId) {
         this._settings.disconnect(this._settingsChangedId);
         this._settingsChangedId = 0;
+      }
+
+      // CLEANUP: Disconnect global Shell observers to prevent zombie closures
+      if (this._overviewShowingId) {
+        Main.overview.disconnect(this._overviewShowingId);
+        this._overviewShowingId = 0;
       }
       super.destroy();
     }

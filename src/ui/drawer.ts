@@ -47,6 +47,7 @@ import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
 import { TodosService } from "../services/todosService.js";
 import { copyToClipboard } from "../services/clipboard.js";
 import { setupTooltip } from "../utils/tooltip.js";
+import { acquirePhantomHoverLock } from "./todoItem.js";
 
 const DRAWER_WIDTH_PX = 600;
 
@@ -272,6 +273,13 @@ export class TodoDrawer {
         this.addBtn.add_style_class_name("todo-add-btn-disabled");
         canAdd = false;
         addTooltipText = "Type a todo...";
+
+        // ─── Apply Focus Lock ───
+        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+          this.entry.grab_key_focus();
+          acquirePhantomHoverLock(this.entry, 150);
+          return GLib.SOURCE_REMOVE;
+        });
       }
     });
 
@@ -568,6 +576,11 @@ export class TodoDrawer {
 
     GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
       this.entry.grab_key_focus();
+
+      // ─── Apply Focus Lock ───
+      // Protect the entry from pointer-picking during the 300ms slide animation
+      acquirePhantomHoverLock(this.entry, 350);
+
       this._entryFocused = true;
       this._focusedIndex = -1;
       return GLib.SOURCE_REMOVE;

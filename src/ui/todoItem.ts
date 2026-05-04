@@ -40,6 +40,23 @@ let _phantomHoverLockId: number = 0;
 // Ensures only one inline action menu can be open at a time globally.
 let _activeActionsItem: any = null;
 
+/**
+ * ─── Phantom Hover Focus Lock ───
+ * Globally suppresses pointer-driven focus stealing for a set duration.
+ * Used during UI mapping, drawer animations, and layout shifts.
+ */
+export function acquirePhantomHoverLock(targetActor: Clutter.Actor, ms: number = 100): void {
+  _intendedFocusActor = targetActor;
+  if (_phantomHoverLockId !== 0) {
+    GLib.source_remove(_phantomHoverLockId);
+  }
+  _phantomHoverLockId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
+    _phantomHoverLockId = 0;
+    _intendedFocusActor = null;
+    return GLib.SOURCE_REMOVE;
+  });
+}
+
 // ─── Registration ─────────────────────────────────────────────────────────────
 
 export const TodoItem = GObject.registerClass(
@@ -276,9 +293,13 @@ export const TodoItem = GObject.registerClass(
         // Phantom Hover Protection: Re-grab focus if a stationary pointer stole it
         if (_phantomHoverLockId !== 0 && _intendedFocusActor && _intendedFocusActor !== this) {
           GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-            if (_intendedFocusActor) {
+            if (_intendedFocusActor && _intendedFocusActor.is_mapped()) {
               _intendedFocusActor.grab_key_focus();
-              (_intendedFocusActor as any).active = true;
+
+              // Only apply 'active' to actors that support it (TodoItem does, St.Entry does not)
+              if ("active" in _intendedFocusActor) {
+                (_intendedFocusActor as any).active = true;
+              }
             }
             return GLib.SOURCE_REMOVE;
           });
@@ -632,19 +653,8 @@ export const TodoItem = GObject.registerClass(
 
           if (needsScroll) {
             // Lock focus to prevent phantom hovers from stealing it during layout shift
-            _intendedFocusActor = this;
-            if (_phantomHoverLockId) {
-              GLib.source_remove(_phantomHoverLockId);
-            }
-
+            acquirePhantomHoverLock(this, 50);
             adj.value = targetValue;
-
-            // Release the lock after the next Clutter picking frame (50ms is safe)
-            _phantomHoverLockId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
-              _phantomHoverLockId = 0;
-              _intendedFocusActor = null;
-              return GLib.SOURCE_REMOVE;
-            });
           }
         }
 

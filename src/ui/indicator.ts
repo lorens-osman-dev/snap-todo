@@ -16,12 +16,13 @@ import Gio from "gi://Gio";
 import Clutter from "gi://Clutter";
 import * as PanelMenu from "resource:///org/gnome/shell/ui/panelMenu.js";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
+import GLib from "gi://GLib";
 import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
 import { TodosService } from "../services/todosService.js";
 import { TodoDrawer } from "./drawer.js";
 import { TodoMenu } from "./menu.js";
 import { PopupMenu } from "resource:///org/gnome/shell/ui/popupMenu.js";
-
+import { acquirePhantomHoverLock } from "./todoItem.js";
 // ─── Registration ─────────────────────────────────────────────────────────────
 
 export const SnapTodoIndicator = GObject.registerClass(
@@ -142,6 +143,14 @@ export const SnapTodoIndicator = GObject.registerClass(
       const text = this._drawer.entry.get_text().trim();
       if (this._service.add(text)) {
         this._drawer.entry.set_text("");
+
+        // ─── Apply Focus Lock ───
+        // Prevent new list items from stealing focus if they render under the pointer
+        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+          this._drawer.entry.grab_key_focus();
+          acquirePhantomHoverLock(this._drawer.entry, 150);
+          return GLib.SOURCE_REMOVE;
+        });
       }
     }
 

@@ -22,6 +22,7 @@ import { copyToClipboard } from "../services/clipboard.js";
 import { TodoListRenderer } from "./todoList.js";
 import { TodoDrawer } from "./drawer.js";
 import { setupTooltip } from "../utils/tooltip.js";
+import { acquirePhantomHoverLock } from "./todoItem.js";
 
 // ─── Menu Manager ─────────────────────────────────────────────────────────────
 
@@ -164,7 +165,11 @@ export class TodoMenu {
     this._openStateId = (this._menu as any).connect("open-state-changed", (_m: unknown, open: boolean) => {
       if (open) {
         GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-          if (this._entry?.is_mapped()) this._entry.grab_key_focus();
+          if (this._entry?.is_mapped()) {
+            this._entry.grab_key_focus();
+            // ─── Apply Focus Lock ───
+            acquirePhantomHoverLock(this._entry, 150);
+          }
           return GLib.SOURCE_REMOVE;
         });
       }
@@ -258,7 +263,11 @@ export class TodoMenu {
 
       // Reclaim focus after the list rebuilds (Clutter layout queue resolution)
       GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-        if (this._entry?.is_mapped()) this._entry.grab_key_focus();
+        if (this._entry?.is_mapped()) {
+          this._entry.grab_key_focus();
+          // ─── Apply Focus Lock ───
+          acquirePhantomHoverLock(this._entry, 150);
+        }
         return GLib.SOURCE_REMOVE;
       });
     } catch (error) {

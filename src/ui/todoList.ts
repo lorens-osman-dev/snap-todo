@@ -25,6 +25,7 @@ import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
 import { TodoItem } from "./todoItem.js";
 import { TodosService } from "../services/todosService.js";
 import { TodoDrawer } from "./drawer.js";
+import { acquirePhantomHoverLock } from "./todoItem.js";
 
 // ─── Renderer ─────────────────────────────────────────────────────────────────
 
@@ -139,13 +140,15 @@ export class TodoListRenderer {
           itemToFocus.active = true;
           itemToFocus.grab_key_focus();
 
+          // ─── Apply Focus Lock ───
+          // Prevent layout-shift pointer picks from stealing focus back
+          acquirePhantomHoverLock(itemToFocus, 100);
+
           if (highlight) {
             itemToFocus.add_style_class_name("todo-item-modifier-held");
           }
 
           // ─── Keyboard Focus Sync ───
-          // Sync the drawer's internal focus state so Up/Down navigation 
-          // works correctly after a reorder or toggle rebuilds the list.
           if (useDrawer && drawer) {
             drawer.syncFocusedItem(itemToFocus);
           }

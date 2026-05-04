@@ -56,8 +56,9 @@ install: build schema
 
 # ── Pack (zip for distribution) ───────────────────────────────────────────────
 
+
 .PHONY: pack
-pack: build schema
+pack: build
 	rm -f $(UUID).zip
 	mkdir -p _pack
 	# Recursively copy all files AND subdirectories for the zip as well
@@ -65,7 +66,9 @@ pack: build schema
 	cp metadata.json  _pack/
 	cp stylesheet.css _pack/
 	cp assets/TODO-SNAP-LOGO-300.svg _pack/
-	cp -r schemas     _pack/
+	# STRICT PACKAGING: Only copy the raw XML schemas, EGO handles compilation
+	mkdir -p _pack/schemas
+	cp schemas/*.xml _pack/schemas/
 	cd _pack && zip -r ../$(UUID).zip .
 	rm -rf _pack
 	@echo "📦  Created $(UUID).zip"
